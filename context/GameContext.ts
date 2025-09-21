@@ -36,6 +36,7 @@ export interface GameContextType extends GameState {
   leaveGame: () => void;
   continueToNextSubPool: () => void;
   toggleReady: () => void;
+  toggleReadyForAuction: () => void;
 }
 
 export const GameContext = React.createContext<GameContextType | undefined>(undefined);

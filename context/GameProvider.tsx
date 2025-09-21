@@ -7,18 +7,15 @@ import { CricketerRole } from '../types';
 import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 
 // --- ACTION TYPES ---
-
-// Actions initiated by players during the auction (bid, pass, etc.)
 type PlayerAction =
   | { type: 'PLACE_BID'; payload: { playerId: string } }
   | { type: 'PASS_TURN'; payload: { playerId: string } }
   | { type: 'DROP_FROM_ROUND'; payload: { playerId: string } };
 
-// Actions initiated by non-host clients in the lobby (e.g., ready up)
 type ClientAction = 
-  | { type: 'TOGGLE_READY'; payload: { playerId: string } };
+  | { type: 'TOGGLE_READY'; payload: { playerId: string } }
+  | { type: 'TOGGLE_READY_FOR_AUCTION'; payload: { playerId: string } };
   
-// Actions that can only be initiated by the host to drive the game state
 type HostAction =
   | { type: 'SET_GAME_STATE'; payload: Partial<GameState> }
   | { type: 'LOAD_CRICKETERS_SUCCESS'; payload: Cricketer[] }
@@ -32,7 +29,6 @@ type HostAction =
   | { type: 'CONTINUE_TO_NEXT_SUBPOOL' }
   | { type: 'END_GAME' };
 
-// A union of all possible action types in the system
 type Action = HostAction | PlayerAction | ClientAction;
 
 const shuffleArray = <T,>(array: T[]): T[] => {
@@ -40,7 +36,7 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 };
 
 const initialStateFactory = (roomCode: string, isHost: boolean, sessionId: string, playerName: string): GameState => {
-  const userPlayer: Player = { id: sessionId, name: playerName, budget: STARTING_BUDGET, squad: [], isHost, isReady: isHost };
+  const userPlayer: Player = { id: sessionId, name: playerName, budget: STARTING_BUDGET, squad: [], isHost, isReady: isHost, readyForAuction: isHost };
 
   return {
     gameStatus: 'LOBBY',
@@ -76,7 +72,6 @@ const getBidIncrement = (currentBid: number): number => {
   return 25;
 };
 
-// The game reducer remains a pure function that only calculates the next state
 const gameReducer = (state: GameState, action: Action): GameState => {
   switch (action.type) {
     case 'SET_GAME_STATE':
@@ -138,8 +133,9 @@ const gameReducer = (state: GameState, action: Action): GameState => {
         'All-rounders-1': allRounders.slice(0, 6), 'All-rounders-2': allRounders.slice(6, 13), 'All-rounders-3': allRounders.slice(13, 20),
         'Wicket-Keepers': wicketKeepers.slice(0, 8),
       };
-
-      return { ...state, gameStatus: 'AUCTION_POOL_VIEW', subPools, lastActionMessage: 'Player sub-pools have been drawn!' };
+      
+      const playersWithResetReady = state.players.map(p => ({...p, readyForAuction: p.isHost }));
+      return { ...state, players: playersWithResetReady, gameStatus: 'AUCTION_POOL_VIEW', subPools, lastActionMessage: 'Player sub-pools have been drawn!' };
     }
     case 'START_GAME': {
       const { subPools } = state;
@@ -295,10 +291,11 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
     if (error) console.error("Host Error: Failed to sync game state:", error);
   }, [supabase, roomCode, isHost]);
 
-  const handleHostAction = useCallback((action: HostAction | PlayerAction) => {
+  const handleHostAction = useCallback((action: Action) => {
     const newState = gameReducer(stateRef.current, action);
-    dispatch(action);
-    updateGameStateInSupabase(newState);
+    stateRef.current = newState; // Immediately update ref
+    dispatch(action); // Update React state
+    updateGameStateInSupabase(newState); // Broadcast to clients
   }, [updateGameStateInSupabase]);
 
   useEffect(() => {
@@ -337,19 +334,20 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
       console.log("Setting up HOST subscriptions.");
       
       const syncAndBroadcastPlayers = async () => {
-        const { data, error } = await supabase.from('players').select('session_id, name, is_host, is_ready').eq('room_code', roomCode);
+        const { data, error } = await supabase.from('players').select('session_id, name, is_host, is_ready, readyForAuction').eq('room_code', roomCode);
         if (error) {
           console.error("Host Error: Could not fetch players:", error);
         } else if (data) {
           const players: Player[] = data.map((p) => ({
-            id: p.session_id, name: p.name, isHost: p.is_host, isReady: p.is_ready,
+            id: p.session_id, name: p.name, isHost: p.is_host, isReady: p.is_ready, readyForAuction: p.readyForAuction,
             budget: stateRef.current.players.find(pl => pl.id === p.session_id)?.budget || STARTING_BUDGET,
             squad: stateRef.current.players.find(pl => pl.id === p.session_id)?.squad || [],
           }));
           handleHostAction({ type: 'SET_PLAYERS', payload: players });
         }
       };
-      syncAndBroadcastPlayers();
+      
+      syncAndBroadcastPlayers(); // Initial sync when becoming host
 
       const playersChannel = supabase.channel(`players-${roomCode}-host`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_code=eq.${roomCode}` },
@@ -365,13 +363,15 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
       }).on('broadcast', { event: 'client-action' }, async ({ payload }) => {
           console.log('Host: Received client action:', payload);
           const action = payload as ClientAction;
+          const player = stateRef.current.players.find(p => p.id === action.payload.playerId);
+          if (!player) return;
+
           if (action.type === 'TOGGLE_READY') {
-              const player = stateRef.current.players.find(p => p.id === action.payload.playerId);
-              if (player) {
-                  const newReadyState = !player.isReady;
-                  const { error } = await supabase.from('players').update({ is_ready: newReadyState }).eq('session_id', action.payload.playerId);
-                  if (error) console.error("Host failed to update player ready state:", error);
-              }
+              const newReadyState = !player.isReady;
+              await supabase.from('players').update({ is_ready: newReadyState }).eq('session_id', action.payload.playerId);
+          } else if (action.type === 'TOGGLE_READY_FOR_AUCTION') {
+              const newReadyState = !player.readyForAuction;
+              await supabase.from('players').update({ readyForAuction: newReadyState }).eq('session_id', action.payload.playerId);
           }
       }).subscribe();
 
@@ -380,21 +380,17 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
         supabase.removeChannel(playersChannel);
         if (actionChannelRef.current) supabase.removeChannel(actionChannelRef.current);
       };
-    } else {
+    } else { // --- CLIENT LOGIC ---
       console.log("Setting up CLIENT subscriptions.");
 
-      // CRITICAL FIX: Fetch the authoritative state immediately upon joining/refreshing.
       const fetchInitialState = async () => {
         console.log('Client: Fetching initial authoritative game state...');
         const { data, error } = await supabase.from('rooms').select('game_state').eq('code', roomCode).single();
-        if (error) {
-          console.error('Client: Failed to fetch initial game state', error);
-        } else if (data?.game_state) {
+        if (error) console.error('Client: Failed to fetch initial game state', error);
+        else if (data?.game_state) {
           console.log('Client: Initial game state received, syncing UI.');
           dispatch({ type: 'SET_GAME_STATE', payload: data.game_state });
-        } else {
-          console.warn('Client: Fetched room but it has no game state yet.');
-        }
+        } else console.warn('Client: Fetched room but it has no game state yet.');
       };
       fetchInitialState();
 
@@ -419,11 +415,8 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
   }, [supabase, roomCode, isHost, handleHostAction]);
 
   const sendPlayerAction = (action: PlayerAction) => {
-    if (isHost) {
-      handleHostAction(action);
-    } else {
-      actionChannelRef.current?.send({ type: 'broadcast', event: 'player-action', payload: action });
-    }
+    if (isHost) handleHostAction(action);
+    else actionChannelRef.current?.send({ type: 'broadcast', event: 'player-action', payload: action });
   };
 
   const sendClientAction = (action: ClientAction) => {
@@ -431,11 +424,8 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
     actionChannelRef.current?.send({ type: 'broadcast', event: 'client-action', payload: action });
   };
   
-  const toggleReady = () => {
-      if (!isHost) {
-          sendClientAction({ type: 'TOGGLE_READY', payload: { playerId: sessionId } });
-      }
-  };
+  const toggleReady = () => { if (!isHost) sendClientAction({ type: 'TOGGLE_READY', payload: { playerId: sessionId } }); };
+  const toggleReadyForAuction = () => { if (!isHost) sendClientAction({ type: 'TOGGLE_READY_FOR_AUCTION', payload: { playerId: sessionId } }); };
   
   const drawPlayers = () => { if(isHost) handleHostAction({ type: 'DRAW_PLAYERS' }); };
   const startGame = () => { if(isHost) handleHostAction({ type: 'START_GAME' }); };
@@ -465,7 +455,7 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
   }, [isHost, state.gameStatus, state.playersInRound, state.currentPlayerForAuction, handleHostAction]);
 
   return (
-    <GameContext.Provider value={{ ...state, drawPlayers, startGame, placeBid, passTurn, dropFromRound, leaveGame: onLeave, continueToNextSubPool, toggleReady }}>
+    <GameContext.Provider value={{ ...state, drawPlayers, startGame, placeBid, passTurn, dropFromRound, leaveGame: onLeave, continueToNextSubPool, toggleReady, toggleReadyForAuction }}>
       {children}
     </GameContext.Provider>
   );

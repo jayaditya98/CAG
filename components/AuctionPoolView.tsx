@@ -1,11 +1,37 @@
 import React from 'react';
 import { useGame } from '../context/useGame';
+import type { Player } from '../types';
+
+const PlayerReadyStatus: React.FC<{ player: Player; isCurrentUser: boolean }> = ({ player, isCurrentUser }) => (
+    <div className="flex items-center justify-between bg-gray-700/50 p-3 rounded-lg">
+        <span className={`font-semibold ${isCurrentUser ? 'text-green-300' : 'text-gray-200'}`}>
+            {player.name}
+        </span>
+        {player.readyForAuction ? (
+            <div className="flex items-center gap-2 text-green-400">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>Ready</span>
+            </div>
+        ) : (
+            <div className="flex items-center gap-2 text-yellow-400 animate-pulse">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <span>Not Ready</span>
+            </div>
+        )}
+    </div>
+);
 
 const AuctionPoolView: React.FC = () => {
-  const { subPools, startGame, players, sessionId } = useGame();
+  const { subPools, startGame, players, sessionId, toggleReadyForAuction } = useGame();
   
   const currentUser = players.find(p => p.id === sessionId);
   const isUserHost = !!currentUser?.isHost;
+  const nonHostPlayers = players.filter(p => !p.isHost);
+  const allReadyForAuction = nonHostPlayers.every(p => p.readyForAuction);
 
   const totalPlayers = Object.values(subPools).reduce((sum, pool) => sum + pool.length, 0);
 
@@ -16,8 +42,7 @@ const AuctionPoolView: React.FC = () => {
         <p className="text-gray-400">Here are the {totalPlayers} players available, divided into sub-pools.</p>
       </div>
 
-      {/* Scrollable Table Container */}
-      <div className="flex-grow overflow-y-auto bg-gray-800 rounded-lg border border-gray-700 mb-24 relative no-scrollbar">
+      <div className="flex-grow overflow-y-auto bg-gray-800 rounded-lg border border-gray-700 mb-40 md:mb-32 relative no-scrollbar">
         <table className="w-full text-sm text-left text-gray-300">
           <thead className="text-xs text-gray-400 uppercase bg-gray-900 sticky top-0 z-10">
             <tr>
@@ -61,19 +86,33 @@ const AuctionPoolView: React.FC = () => {
         </table>
       </div>
 
-      {/* Fixed Start Auction Button */}
-      {isUserHost && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900/80 backdrop-blur-sm border-t border-gray-700 z-20">
-           <div className="max-w-4xl mx-auto">
-               <button
-                  onClick={startGame}
-                  className="w-full bg-green-500 text-gray-900 font-bold py-3 rounded-lg hover:bg-green-400 transition-all duration-300 transform hover:scale-105"
-                >
-                  Start Auction
-                </button>
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900/80 backdrop-blur-sm border-t border-gray-700 z-20">
+           <div className="max-w-4xl mx-auto space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {players.map(p => <PlayerReadyStatus key={p.id} player={p} isCurrentUser={p.id === sessionId}/>)}
+              </div>
+              {isUserHost ? (
+                  <button
+                    onClick={startGame}
+                    disabled={!allReadyForAuction}
+                    className="w-full bg-green-500 text-gray-900 font-bold py-3 rounded-lg hover:bg-green-400 transition-all duration-300 transform hover:scale-105 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                  >
+                    {allReadyForAuction ? 'Start Auction' : 'Waiting for players to be ready...'}
+                  </button>
+              ) : (
+                  <button
+                      onClick={toggleReadyForAuction}
+                      className={`w-full font-bold py-3 rounded-lg transition-all duration-300 transform hover:scale-105 ${
+                          currentUser?.readyForAuction 
+                          ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-400' 
+                          : 'bg-teal-500 text-white hover:bg-teal-400'
+                      }`}
+                  >
+                      {currentUser?.readyForAuction ? 'Set to Not Ready' : 'Ready for Auction!'}
+                  </button>
+              )}
            </div>
         </div>
-      )}
     </div>
   );
 };

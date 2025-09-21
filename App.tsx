@@ -105,7 +105,7 @@ const App: React.FC = () => {
         console.log(`Creating player record for ${name} in room ${newRoomCode}...`);
         const { error: playerError } = await supabase
           .from('players')
-          .upsert({ session_id: sessionId, room_code: newRoomCode, name: name, is_host: true, is_ready: true });
+          .upsert({ session_id: sessionId, room_code: newRoomCode, name: name, is_host: true, is_ready: true, readyForAuction: true });
 
         if (playerError) {
             console.error("CRITICAL: Error creating player:", playerError);
@@ -149,10 +149,30 @@ const App: React.FC = () => {
         return;
     }
 
-    // 2. DEFINITIVE FIX: Delete-then-Insert strategy.
-    // This is a bulletproof way to ensure no previous host status persists.
+    // 2. Handle name collisions
+    let finalName = name;
+    const { data: existingPlayers, error: playersError } = await supabase
+        .from('players')
+        .select('name')
+        .eq('room_code', roomCodeUpper);
+
+    if (playersError) {
+        alert(`Error checking for players: ${playersError.message}`);
+        return;
+    }
     
-    // Step A: Aggressively delete any existing player record for this session.
+    const existingNames = new Set(existingPlayers.map(p => p.name));
+    let suffix = 1;
+    while (existingNames.has(finalName)) {
+        finalName = `${name}-${suffix}`;
+        suffix++;
+    }
+
+    if (finalName !== name) {
+        console.log(`Name collision detected. New name is ${finalName}`);
+    }
+
+    // 3. DEFINITIVE FIX: Delete-then-Insert strategy.
     const { error: deleteError } = await supabase
       .from('players')
       .delete()
@@ -172,9 +192,10 @@ const App: React.FC = () => {
       .insert({ 
         session_id: sessionId, 
         room_code: roomCodeUpper, 
-        name: name, 
+        name: finalName, 
         is_host: false, // GUARANTEED false
-        is_ready: false
+        is_ready: false,
+        readyForAuction: false
       });
       
     if (insertError) {
@@ -183,9 +204,9 @@ const App: React.FC = () => {
         return;
     }
 
-    // 3. Update the app state
-    saveGameSession({ roomCode: roomCodeUpper, isHost: false, playerName: name });
-    setPlayerName(name);
+    // 4. Update the app state
+    saveGameSession({ roomCode: roomCodeUpper, isHost: false, playerName: finalName });
+    setPlayerName(finalName);
     setRoomCode(roomCodeUpper);
     setIsHost(false);
     setGameStatus('LOBBY');
