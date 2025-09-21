@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/useGame';
 import type { Player, Cricketer } from '../types';
 import { CricketerRole } from '../types';
-import { TOTAL_PLAYERS_TO_AUCTION } from '../constants';
+import { TURN_DURATION_SECONDS } from '../constants';
 import type { GameState } from '../context/GameContext';
 import Modal from './Modal';
 
@@ -53,6 +54,47 @@ const DetailedRoleIcon: React.FC<{ role: CricketerRole }> = ({ role }) => {
             return null;
     }
 };
+
+// --- New Timer Component ---
+const TimerCircle: React.FC<{ timeLeft: number; duration: number }> = ({ timeLeft, duration }) => {
+  const normalizedTime = Math.max(0, timeLeft / duration);
+  const circumference = 2 * Math.PI * 16; // r=16
+  const strokeDashoffset = circumference * (1 - normalizedTime);
+
+  return (
+    <div className="absolute top-2 left-2 z-30 w-12 h-12 md:w-14 md:h-14">
+      <svg className="w-full h-full" viewBox="0 0 36 36" transform="rotate(-90)">
+        <circle
+          className="text-gray-700/50"
+          strokeWidth="3"
+          stroke="currentColor"
+          fill="transparent"
+          r="16"
+          cx="18"
+          cy="18"
+        />
+        <circle
+          className="text-green-400 transition-[stroke-dashoffset] duration-100 linear"
+          strokeWidth="3"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          stroke="currentColor"
+          fill="transparent"
+          r="16"
+          cx="18"
+          cy="18"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-lg md:text-xl font-bold text-white drop-shadow-lg">
+          {Math.ceil(timeLeft)}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 
 // --- Layout-Specific Components for this view ---
 const CompactCricketerCard: React.FC<{ cricketer: Cricketer | null, winner?: Player | null }> = ({ cricketer, winner }) => {
@@ -187,6 +229,28 @@ const Auction: React.FC = () => {
         sessionId
     } = useGame();
     const [isSubPoolModalVisible, setIsSubPoolModalVisible] = useState(false);
+    const [timeLeft, setTimeLeft] = useState(TURN_DURATION_SECONDS);
+
+    useEffect(() => {
+        if (gameStatus !== 'AUCTION') {
+            return;
+        }
+
+        setTimeLeft(TURN_DURATION_SECONDS); // Reset on new turn
+
+        const intervalId = setInterval(() => {
+            setTimeLeft((prevTime) => {
+                if (prevTime <= 0.1) {
+                    clearInterval(intervalId);
+                    return 0;
+                }
+                return prevTime - 0.1;
+            });
+        }, 100);
+
+        return () => clearInterval(intervalId);
+    }, [activePlayerId, gameStatus]);
+
 
     const user = players.find(p => p.id === sessionId);
     const otherPlayers = players.filter(p => p.id !== sessionId);
@@ -269,7 +333,10 @@ const Auction: React.FC = () => {
             )}
 
             <div className="grid grid-cols-2 gap-2 md:gap-4 flex-shrink-0 h-[220px] md:h-[260px]">
-                <CompactCricketerCard cricketer={soldCricketer} winner={winner} />
+                <div className="relative">
+                    {gameStatus === 'AUCTION' && <TimerCircle timeLeft={timeLeft} duration={TURN_DURATION_SECONDS} />}
+                    <CompactCricketerCard cricketer={soldCricketer} winner={winner} />
+                </div>
                 <MyTeamSummary player={user} auctionHistory={auctionHistory} />
             </div>
 
