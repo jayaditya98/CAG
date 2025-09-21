@@ -278,43 +278,27 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
   const stateRef = useRef(state);
   stateRef.current = state; // Keep ref updated with the latest state
 
-  // Use refs for Supabase channels to ensure stable references across re-renders
-  const playersChannelRef = useRef<RealtimeChannel | null>(null);
-  const roomChannelRef = useRef<RealtimeChannel | null>(null);
   const actionChannelRef = useRef<RealtimeChannel | null>(null);
 
-  // --- Host-only actions ---
+  // --- Host-only: Update and broadcast state ---
   const updateGameStateInSupabase = useCallback(async (newState: GameState) => {
     const { error } = await supabase
       .from('rooms')
       .update({ game_state: newState })
       .eq('code', roomCode);
-    if (error) console.error("Error syncing game state:", error);
+    if (error) console.error("Host Error: Failed to sync game state:", error);
   }, [supabase, roomCode]);
 
-  // Fix: Broaden `handleHostAction` to accept any `Action` since the host is responsible for processing all game logic, including player actions.
+  // --- Host-only: Process any action and broadcast the result ---
   const handleHostAction = useCallback((action: Action) => {
-    if (!isHost) return;
     const newState = gameReducer(stateRef.current, action);
     dispatch(action); // Dispatch locally for immediate host feedback
-    updateGameStateInSupabase(newState); // Sync to DB for clients
-  }, [isHost, updateGameStateInSupabase]);
+    updateGameStateInSupabase(newState); // Sync the new authoritative state to DB for all clients
+  }, [updateGameStateInSupabase]);
 
-
-  // --- Client actions broadcasted to Host ---
-  const sendPlayerAction = (action: PlayerAction) => {
-    if (isHost) {
-      // Fix: Removed incorrect cast from PlayerAction to HostAction. The host can handle PlayerActions directly.
-      handleHostAction(action); // Host processes their own actions directly
-    } else {
-      actionChannelRef.current?.send({ // Clients broadcast actions to the host
-        type: 'broadcast', event: 'player-action', payload: action,
-      });
-    }
-  };
-
+  // --- Realtime Subscriptions ---
   useEffect(() => {
-    // Fetch initial cricketers list
+    // All clients fetch the master cricketer list on load
     const fetchCricketers = async () => {
       const { data, error } = await supabase.from('cricketers').select('*');
       if (error) {
@@ -328,88 +312,128 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
           else if (roleStr === 'all-rounder') role = CricketerRole.AllRounder;
           else if (['wicket-keeper', 'wk'].includes(roleStr)) role = CricketerRole.WicketKeeper;
           
-          return role ? {
+          if (!role) {
+              console.warn(`Unrecognized role "${item.ROLE}" for cricketer ${item.Name}. Skipping.`);
+              return null;
+          }
+
+          return {
             id: item.id, name: item.Name, role, basePrice: item.base_price || 50, image: item.image,
             overall: item.OVR || 0, battingOVR: item['Batting OVR'] || 0,
             bowlingOVR: item['Bowling OVR'] || 0, fieldingOVR: item['Fielding OVR'] || 0,
-          } : null;
+          };
         }).filter((c): c is Cricketer => c !== null);
         dispatch({ type: 'LOAD_CRICKETERS_SUCCESS', payload: transformedData });
       }
     };
     fetchCricketers();
-  }, [supabase]);
 
-  // --- Realtime Subscriptions Setup ---
-  useEffect(() => {
-    // Function to fetch all players in the room and update state
-    const syncPlayers = async () => {
-      const { data, error } = await supabase.from('players').select('session_id, name, is_host, is_ready').eq('room_code', roomCode);
-      if (error) console.error("Error fetching players:", error);
-      else if (data) {
-        const players = data.map((p): Player => ({
-          id: p.session_id, name: p.name, isHost: p.is_host, isReady: p.is_ready,
-          budget: STARTING_BUDGET, squad: [], // Budget/squad will be synced from game_state
-        }));
-        dispatch({ type: 'SET_PLAYERS', payload: players });
-      }
-    };
-
-    // Initial fetch
-    syncPlayers();
-
-    // Subscribe to player changes (join, leave, ready status)
-    playersChannelRef.current = supabase.channel(`players-${roomCode}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_code=eq.${roomCode}` }, () => {
-        console.log('Realtime: Player change detected, syncing lobby.');
-        syncPlayers();
-      }).subscribe();
-
-    // Subscribe to game state changes (for clients)
-    roomChannelRef.current = supabase.channel(`room-${roomCode}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `code=eq.${roomCode}`}, (payload) => {
-        if (payload.new.game_state && !isHost) {
-          console.log('Realtime: Game state update received from host.');
-          dispatch({ type: 'SET_GAME_STATE', payload: payload.new.game_state });
-        }
-      }).subscribe();
-
-    // Subscribe to player actions (for host)
+    // All clients need a channel to SEND actions to the host
     actionChannelRef.current = supabase.channel(`actions-${roomCode}`);
+
     if (isHost) {
+      console.log("Setting up HOST subscriptions.");
+      // HOST LOGIC: The host is the source of truth.
+      
+      // 1. Function to sync player list from DB, update state, and broadcast
+      const syncAndBroadcastPlayers = async () => {
+        const { data, error } = await supabase.from('players').select('session_id, name, is_host, is_ready').eq('room_code', roomCode);
+        if (error) {
+          console.error("Host Error: Could not fetch players:", error);
+        } else if (data) {
+          const players: Player[] = data.map((p) => ({
+            id: p.session_id, name: p.name, isHost: p.is_host, isReady: p.is_ready,
+            budget: stateRef.current.players.find(pl => pl.id === p.session_id)?.budget || STARTING_BUDGET,
+            squad: stateRef.current.players.find(pl => pl.id === p.session_id)?.squad || [],
+          }));
+          handleHostAction({ type: 'SET_PLAYERS', payload: players });
+        }
+      };
+
+      // Initial sync on becoming host
+      syncAndBroadcastPlayers();
+
+      // 2. Host subscribes to player changes (join, leave, ready status)
+      const playersChannel = supabase.channel(`players-${roomCode}-host`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_code=eq.${roomCode}` },
+          () => {
+            console.log('Host: Player change detected, re-syncing and broadcasting.');
+            syncAndBroadcastPlayers();
+          }
+        ).subscribe();
+
+      // 3. Host subscribes to receive actions broadcasted by clients
       actionChannelRef.current.on('broadcast', { event: 'player-action' }, ({ payload }) => {
-        console.log('Realtime: Host received action from client:', payload);
-        // Fix: This call is now valid as handleHostAction accepts the broader `Action` type.
+        console.log('Host: Received player action from client:', payload);
         handleHostAction(payload as Action);
       }).subscribe();
-    } else {
-        // All clients need to subscribe to join the channel, even if they only send.
-        actionChannelRef.current.subscribe();
-    }
 
-    // Cleanup function
-    return () => {
-      if (playersChannelRef.current) supabase.removeChannel(playersChannelRef.current);
-      if (roomChannelRef.current) supabase.removeChannel(roomChannelRef.current);
-      if (actionChannelRef.current) supabase.removeChannel(actionChannelRef.current);
-    };
+      // Cleanup for host
+      return () => {
+        console.log("Cleaning up HOST subscriptions.");
+        supabase.removeChannel(playersChannel);
+        if (actionChannelRef.current) supabase.removeChannel(actionChannelRef.current);
+      };
+
+    } else {
+      // CLIENT LOGIC: Clients only listen for the authoritative game state.
+      console.log("Setting up CLIENT subscriptions.");
+
+      // 1. Client subscribes to game state updates from the host
+      const roomChannel = supabase.channel(`room-${roomCode}-client`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `code=eq.${roomCode}` },
+          (payload) => {
+            if (payload.new.game_state) {
+              console.log('Client: Received new game state from host.');
+              dispatch({ type: 'SET_GAME_STATE', payload: payload.new.game_state });
+            }
+          }
+        ).subscribe();
+        
+      // 2. Client must also subscribe to the action channel to be able to send events
+      actionChannelRef.current.subscribe();
+
+      // Cleanup for client
+      return () => {
+        console.log("Cleaning up CLIENT subscriptions.");
+        supabase.removeChannel(roomChannel);
+        if (actionChannelRef.current) supabase.removeChannel(actionChannelRef.current);
+      };
+    }
   }, [supabase, roomCode, isHost, handleHostAction]);
 
-  const drawPlayers = () => handleHostAction({ type: 'DRAW_PLAYERS' });
-  const startGame = () => handleHostAction({ type: 'START_GAME' });
-  const continueToNextSubPool = () => handleHostAction({ type: 'CONTINUE_TO_NEXT_SUBPOOL' });
+  // --- Player Actions ---
+  const sendPlayerAction = (action: PlayerAction) => {
+    if (isHost) {
+      handleHostAction(action); // Host processes their own actions directly
+    } else {
+      // Clients broadcast actions to the host for processing
+      actionChannelRef.current?.send({
+        type: 'broadcast', event: 'player-action', payload: action,
+      });
+    }
+  };
   
-  const placeBid = () => sendPlayerAction({ type: 'PLACE_BID', payload: { playerId: sessionId } });
-  const passTurn = () => sendPlayerAction({ type: 'PASS_TURN', payload: { playerId: sessionId } });
-  const dropFromRound = () => sendPlayerAction({ type: 'DROP_FROM_ROUND', payload: { playerId: sessionId } });
   const toggleReady = async () => {
       const player = stateRef.current.players.find(p => p.id === sessionId);
       if (player && !player.isHost) {
         const newReadyState = !player.isReady;
-        await supabase.from('players').update({ is_ready: newReadyState }).eq('session_id', sessionId);
-        // No local dispatch needed; change will come via realtime subscription for all players
+        // Client writes change to DB. The UI update will come back from the host's broadcast.
+        const { error } = await supabase.from('players').update({ is_ready: newReadyState }).eq('session_id', sessionId);
+        if (error) {
+            console.error("Error toggling ready state:", error);
+            alert("Could not update ready status. Please try again.");
+        }
       }
   };
+  
+  const drawPlayers = () => { if(isHost) handleHostAction({ type: 'DRAW_PLAYERS' }); };
+  const startGame = () => { if(isHost) handleHostAction({ type: 'START_GAME' }); };
+  const continueToNextSubPool = () => { if(isHost) handleHostAction({ type: 'CONTINUE_TO_NEXT_SUBPOOL' }); };
+  
+  const placeBid = () => sendPlayerAction({ type: 'PLACE_BID', payload: { playerId: sessionId } });
+  const passTurn = () => sendPlayerAction({ type: 'PASS_TURN', payload: { playerId: sessionId } });
+  const dropFromRound = () => sendPlayerAction({ type: 'DROP_FROM_ROUND', payload: { playerId: sessionId } });
 
   // --- Host-driven Timers and Game Flow Logic ---
   useEffect(() => {
@@ -424,12 +448,12 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
         return () => clearTimeout(timer);
     }
     if (state.gameStatus === 'AUCTION' && state.currentPlayerForAuction) {
-       if (state.playersInRound.length === 1 || (state.highestBidderId && state.activePlayerId === state.highestBidderId)) {
-            const timer = setTimeout(() => handleHostAction({ type: 'END_ROUND' }), 500);
+       if (state.playersInRound.length <= 1) {
+            const timer = setTimeout(() => handleHostAction({ type: 'END_ROUND' }), 1500); // Slightly longer delay to see the final state
             return () => clearTimeout(timer);
        }
     }
-  }, [isHost, state.gameStatus, state.playersInRound, state.activePlayerId, state.highestBidderId, state.currentPlayerForAuction, handleHostAction]);
+  }, [isHost, state.gameStatus, state.playersInRound, state.currentPlayerForAuction, handleHostAction]);
 
   return (
     <GameContext.Provider value={{ ...state, drawPlayers, startGame, placeBid, passTurn, dropFromRound, leaveGame: onLeave, continueToNextSubPool, toggleReady }}>
