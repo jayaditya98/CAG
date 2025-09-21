@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { Player, Cricketer, GameStatus } from '../types';
 
@@ -25,6 +26,9 @@ export interface GameState {
   currentSubPoolPlayers: Cricketer[];
   nextSubPoolName: string;
   nextSubPoolPlayers: Cricketer[];
+  // New properties for robust progress tracking
+  currentSubPoolOrderIndex: number;
+  currentPlayerInSubPoolIndex: number;
 }
 
 export interface GameContextType extends GameState {

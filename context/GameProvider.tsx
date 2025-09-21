@@ -1,3 +1,4 @@
+
 import React, { useReducer, useEffect, useRef, useCallback } from 'react';
 import { GameContext, GameState } from './GameContext';
 import { STARTING_BUDGET } from '../constants';
@@ -48,6 +49,9 @@ const initialStateFactory = (sessionId: string, playerName: string): GameState =
   currentSubPoolPlayers: [],
   nextSubPoolName: '',
   nextSubPoolPlayers: [],
+  // New properties for robust progress tracking
+  currentSubPoolOrderIndex: 0,
+  currentPlayerInSubPoolIndex: -1,
 });
 
 interface GameProviderProps {

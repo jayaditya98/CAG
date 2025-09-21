@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useGame } from '../context/useGame';
 import type { Player, Cricketer } from '../types';
@@ -164,7 +165,7 @@ const Auction: React.FC = () => {
         gameStatus, players, currentPlayerForAuction, currentBid, 
         highestBidderId, activePlayerId, playersInRound,
         placeBid, passTurn, dropFromRound, auctionHistory,
-        currentSubPoolName, currentSubPoolPlayers,
+        subPools, subPoolOrder, currentSubPoolOrderIndex, currentPlayerInSubPoolIndex,
         nextSubPoolName, nextSubPoolPlayers, continueToNextSubPool,
         sessionId
     } = useGame();
@@ -196,18 +197,26 @@ const Auction: React.FC = () => {
         return 25;
     };
     const bidIncrement = getBidIncrement(currentBid);
-
+    
+    // --- New Progress Bar Logic ---
+    const currentSubPoolName = subPoolOrder[currentSubPoolOrderIndex] || '';
+    const currentPool = subPools[currentSubPoolName] || [];
+    const totalInPool = currentPool.length;
+    // +1 because index is 0-based
+    const currentNumberInPool = currentPlayerInSubPoolIndex + 1;
+    // Protect against division by zero and negative numbers/bad states
+    const progressPercent = totalInPool > 0 ? Math.max(0, (currentNumberInPool / totalInPool) * 100) : 0;
+    
+    // --- Modal Logic ---
     const soldPlayersInPool = auctionHistory.filter(h => 
-        currentSubPoolPlayers.some(p => p.id === h.cricketer.id)
+        currentPool.some(p => p.id === h.cricketer.id)
     );
     const soldPlayerIds = new Set(soldPlayersInPool.map(p => p.cricketer.id));
-    const upcomingPlayers = currentSubPoolPlayers.filter(p => 
+    const upcomingPlayers = currentPool.filter(p => 
         !soldPlayerIds.has(p.id) && p.id !== currentPlayerForAuction?.id
     );
-    const totalInPool = currentSubPoolPlayers.length;
-    const currentNumberInPool = soldPlayersInPool.length + (currentPlayerForAuction ? 1 : 0);
 
-    const finishedSubPoolSummary = currentSubPoolPlayers.map(player => {
+    const finishedSubPoolSummary = (subPools[subPoolOrder[currentSubPoolOrderIndex-1]] || []).map(player => {
         const historyEntry = auctionHistory.find(h => h.cricketer.id === player.id);
         if (historyEntry) {
             if (historyEntry.winnerId === 'UNSOLD') {
@@ -225,10 +234,18 @@ const Auction: React.FC = () => {
             {(gameStatus === 'AUCTION' || gameStatus === 'ROUND_OVER') && currentSubPoolName && totalInPool > 0 && (
                 <div 
                     onClick={() => setIsSubPoolModalVisible(true)}
-                    className="flex-shrink-0 bg-gray-800/50 p-2 rounded-lg text-center cursor-pointer hover:bg-gray-700/50 transition border border-gray-700 mb-2"
+                    className="flex-shrink-0 bg-gray-800/50 p-3 rounded-lg cursor-pointer hover:bg-gray-700/50 transition border border-gray-700 mb-2 space-y-2"
                 >
-                    <p className="font-bold text-teal-300">{currentSubPoolName}</p>
-                    <p className="text-xs text-gray-400">Player {currentNumberInPool} of {totalInPool}</p>
+                    <div className="flex justify-between items-center text-sm">
+                        <p className="font-bold text-teal-300">{currentSubPoolName}</p>
+                        <p className="font-mono text-gray-400">{currentNumberInPool} / {totalInPool}</p>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-1.5">
+                        <div 
+                            className="bg-green-500 h-1.5 rounded-full transition-all duration-500 ease-out" 
+                            style={{ width: `${progressPercent}%` }}
+                        ></div>
+                    </div>
                 </div>
             )}
 
@@ -314,7 +331,7 @@ const Auction: React.FC = () => {
                 </div>
             </Modal>
             
-            <Modal isVisible={gameStatus === 'SUBPOOL_BREAK'} onClose={() => {}} title={`Sub-Pool Over: ${currentSubPoolName}`}>
+            <Modal isVisible={gameStatus === 'SUBPOOL_BREAK'} onClose={() => {}} title={`Sub-Pool Over: ${subPoolOrder[currentSubPoolOrderIndex - 1] || ''}`}>
                 <div className="space-y-6">
                     <div>
                         <h3 className="text-lg font-bold text-green-400 border-b border-gray-600 pb-2 mb-3">Finished Sub-Pool Summary</h3>
