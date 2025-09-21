@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/useGame';
 import type { Player, Cricketer } from '../types';
@@ -62,7 +61,7 @@ const TimerCircle: React.FC<{ timeLeft: number; duration: number }> = ({ timeLef
   const strokeDashoffset = circumference * (1 - normalizedTime);
 
   return (
-    <div className="absolute top-2 left-2 z-30 w-12 h-12 md:w-14 md:h-14">
+    <div className="relative w-14 h-14 mx-auto mt-2">
       <svg className="w-full h-full" viewBox="0 0 36 36" transform="rotate(-90)">
         <circle
           className="text-gray-700/50"
@@ -87,7 +86,7 @@ const TimerCircle: React.FC<{ timeLeft: number; duration: number }> = ({ timeLef
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-lg md:text-xl font-bold text-white drop-shadow-lg">
+        <span className="text-xl font-bold text-white drop-shadow-lg">
           {Math.ceil(timeLeft)}
         </span>
       </div>
@@ -97,7 +96,7 @@ const TimerCircle: React.FC<{ timeLeft: number; duration: number }> = ({ timeLef
 
 
 // --- Layout-Specific Components for this view ---
-const CompactCricketerCard: React.FC<{ cricketer: Cricketer | null, winner?: Player | null }> = ({ cricketer, winner }) => {
+const CompactCricketerCard: React.FC<{ cricketer: Cricketer | null, winner?: Player | null, isUnsold?: boolean }> = ({ cricketer, winner, isUnsold }) => {
     if (!cricketer) {
         return <div className="h-full flex items-center justify-center bg-gray-800 rounded-lg text-gray-400 p-2">Loading next player...</div>;
     }
@@ -143,6 +142,11 @@ const CompactCricketerCard: React.FC<{ cricketer: Cricketer | null, winner?: Pla
                 <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center rounded-lg z-30">
                     <p className="text-sm md:text-lg text-gray-300">SOLD TO</p>
                     <p className="text-xl md:text-3xl font-bold text-green-400">{winner.name}</p>
+                </div>
+            )}
+            {isUnsold && (
+                <div className="absolute inset-0 bg-gray-800/80 backdrop-blur-sm flex flex-col items-center justify-center rounded-lg z-30">
+                    <p className="text-2xl md:text-4xl font-bold text-gray-300">UNSOLD</p>
                 </div>
             )}
         </div>
@@ -262,6 +266,7 @@ const Auction: React.FC = () => {
 
     const winnerId = gameStatus === 'ROUND_OVER' ? auctionHistory[auctionHistory.length-1]?.winnerId : null;
     const winner = players.find(p => p.id === winnerId);
+    const isUnsold = gameStatus === 'ROUND_OVER' && winnerId === 'UNSOLD';
     
     const soldCricketer = gameStatus === 'ROUND_OVER' ? auctionHistory[auctionHistory.length - 1]?.cricketer : currentPlayerForAuction;
 
@@ -334,8 +339,7 @@ const Auction: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-2 md:gap-4 flex-shrink-0 h-[220px] md:h-[260px]">
                 <div className="relative">
-                    {gameStatus === 'AUCTION' && <TimerCircle timeLeft={timeLeft} duration={TURN_DURATION_SECONDS} />}
-                    <CompactCricketerCard cricketer={soldCricketer} winner={winner} />
+                    <CompactCricketerCard cricketer={soldCricketer} winner={winner} isUnsold={isUnsold} />
                 </div>
                 <MyTeamSummary player={user} auctionHistory={auctionHistory} />
             </div>
@@ -354,6 +358,7 @@ const Auction: React.FC = () => {
                     <p className="text-4xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-300 to-teal-200">
                         {currentBid}
                     </p>
+                    {gameStatus === 'AUCTION' && <TimerCircle timeLeft={timeLeft} duration={TURN_DURATION_SECONDS} />}
                 </div>
             </div>
 
