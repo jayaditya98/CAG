@@ -398,7 +398,9 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
         if (error) console.error('Client: Failed to fetch initial game state', error);
         else if (data?.game_state) {
           console.log('Client: Initial game state received, syncing UI.');
-          dispatch({ type: 'SET_GAME_STATE', payload: data.game_state });
+          // CRITICAL FIX: Prevent overwriting the client's own session ID with the host's.
+          const { sessionId: _, ...authoritativeState } = data.game_state;
+          dispatch({ type: 'SET_GAME_STATE', payload: authoritativeState });
         } else console.warn('Client: Fetched room but it has no game state yet.');
       };
       fetchInitialState();
@@ -408,7 +410,9 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
           (payload) => {
             if (payload.new.game_state) {
               console.log('Client: Received new game state from host.');
-              dispatch({ type: 'SET_GAME_STATE', payload: payload.new.game_state });
+              // CRITICAL FIX: Prevent overwriting the client's own session ID with the host's.
+              const { sessionId: _, ...authoritativeState } = payload.new.game_state;
+              dispatch({ type: 'SET_GAME_STATE', payload: authoritativeState });
             }
           }
         ).subscribe();

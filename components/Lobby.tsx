@@ -81,13 +81,14 @@ const Lobby: React.FC = () => {
             ) : (
                 <button
                     onClick={toggleReady}
+                    disabled={isLoading}
                     className={`w-full font-bold py-3 rounded-lg transition-all duration-300 transform hover:scale-105 ${
                         currentUser?.isReady 
                         ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-400' 
                         : 'bg-teal-500 text-white hover:bg-teal-400'
-                    }`}
+                    } disabled:bg-gray-600 disabled:cursor-not-allowed`}
                 >
-                    {currentUser?.isReady ? 'Set to Not Ready' : 'Ready Up!'}
+                    {isLoading ? 'Loading...' : (currentUser?.isReady ? 'Set to Not Ready' : 'Ready Up!')}
                 </button>
             )}
             
