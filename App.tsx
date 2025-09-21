@@ -105,7 +105,7 @@ const App: React.FC = () => {
         console.log(`Creating player record for ${name} in room ${newRoomCode}...`);
         const { error: playerError } = await supabase
           .from('players')
-          .upsert({ session_id: sessionId, room_code: newRoomCode, name: name, is_host: true });
+          .upsert({ session_id: sessionId, room_code: newRoomCode, name: name, is_host: true, is_ready: true });
 
         if (playerError) {
             console.error("CRITICAL: Error creating player:", playerError);
@@ -137,6 +137,7 @@ const App: React.FC = () => {
     const roomCodeUpper = code.trim().toUpperCase();
     if (!roomCodeUpper) return;
 
+    // 1. Verify the room exists
     const { data: room, error: roomError } = await supabase
         .from('rooms')
         .select('code')
@@ -148,9 +149,41 @@ const App: React.FC = () => {
         return;
     }
 
-    const { error: playerError } = await supabase
+    // 2. Explicitly insert or update the player to GUARANTEE is_host is false.
+    // This replaces the unreliable `upsert` logic that was causing the bug.
+    const { data: existingPlayer } = await supabase
+      .from('players')
+      .select('session_id')
+      .eq('session_id', sessionId)
+      .single();
+
+    let playerError = null;
+
+    if (existingPlayer) {
+      console.log('Player record exists, updating...');
+      const { error } = await supabase
         .from('players')
-        .upsert({ session_id: sessionId, room_code: roomCodeUpper, name: name, is_host: false });
+        .update({ 
+          room_code: roomCodeUpper, 
+          name: name, 
+          is_host: false, // CRITICAL FIX: Explicitly set is_host to false
+          is_ready: false // Reset ready status on join
+        })
+        .eq('session_id', sessionId);
+      playerError = error;
+    } else {
+      console.log('New player, inserting record...');
+      const { error } = await supabase
+        .from('players')
+        .insert({ 
+          session_id: sessionId, 
+          room_code: roomCodeUpper, 
+          name: name, 
+          is_host: false, // CRITICAL FIX: Explicitly set is_host to false
+          is_ready: false
+        });
+      playerError = error;
+    }
 
     if (playerError) {
         console.error("Error joining room:", playerError);
@@ -158,6 +191,7 @@ const App: React.FC = () => {
         return;
     }
 
+    // 3. Update the app state
     saveGameSession({ roomCode: roomCodeUpper, isHost: false, playerName: name });
     setPlayerName(name);
     setRoomCode(roomCodeUpper);
