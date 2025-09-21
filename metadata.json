@@ -1,0 +1,5 @@
+{
+  "name": "Cricket Auction Game",
+  "description": "A modern, responsive web application for a multiplayer cricket auction game. Players can join or create lobbies, and participate in a real-time auction to build their cricket team.",
+  "requestFramePermissions": []
+}
