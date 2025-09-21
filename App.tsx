@@ -149,45 +149,37 @@ const App: React.FC = () => {
         return;
     }
 
-    // 2. Explicitly insert or update the player to GUARANTEE is_host is false.
-    // This replaces the unreliable `upsert` logic that was causing the bug.
-    const { data: existingPlayer } = await supabase
+    // 2. DEFINITIVE FIX: Delete-then-Insert strategy.
+    // This is a bulletproof way to ensure no previous host status persists.
+    
+    // Step A: Aggressively delete any existing player record for this session.
+    const { error: deleteError } = await supabase
       .from('players')
-      .select('session_id')
-      .eq('session_id', sessionId)
-      .single();
+      .delete()
+      .eq('session_id', sessionId);
 
-    let playerError = null;
-
-    if (existingPlayer) {
-      console.log('Player record exists, updating...');
-      const { error } = await supabase
-        .from('players')
-        .update({ 
-          room_code: roomCodeUpper, 
-          name: name, 
-          is_host: false, // CRITICAL FIX: Explicitly set is_host to false
-          is_ready: false // Reset ready status on join
-        })
-        .eq('session_id', sessionId);
-      playerError = error;
-    } else {
-      console.log('New player, inserting record...');
-      const { error } = await supabase
-        .from('players')
-        .insert({ 
-          session_id: sessionId, 
-          room_code: roomCodeUpper, 
-          name: name, 
-          is_host: false, // CRITICAL FIX: Explicitly set is_host to false
-          is_ready: false
-        });
-      playerError = error;
+    if (deleteError) {
+      console.error("Error clearing previous player session:", deleteError);
+      alert(`An error occurred while trying to join: ${deleteError.message}`);
+      return;
     }
+    
+    console.log('Previous player record (if any) deleted. Inserting new record.');
 
-    if (playerError) {
-        console.error("Error joining room:", playerError);
-        alert(`Error joining room: ${playerError.message}`);
+    // Step B: Insert a fresh record, guaranteeing is_host is false.
+    const { error: insertError } = await supabase
+      .from('players')
+      .insert({ 
+        session_id: sessionId, 
+        room_code: roomCodeUpper, 
+        name: name, 
+        is_host: false, // GUARANTEED false
+        is_ready: false
+      });
+      
+    if (insertError) {
+        console.error("Error joining room:", insertError);
+        alert(`Error joining room: ${insertError.message}`);
         return;
     }
 
