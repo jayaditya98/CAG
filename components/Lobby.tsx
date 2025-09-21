@@ -4,23 +4,44 @@ import type { Player } from '../types';
 
 const PlayerLobbyCard: React.FC<{ player: Player; isCurrentUser: boolean }> = ({ player, isCurrentUser }) => (
     <div className="bg-gray-800 p-4 rounded-lg flex items-center justify-between shadow-lg border border-gray-700">
-        <span className={`font-semibold ${isCurrentUser ? 'text-green-400' : 'text-gray-300'}`}>
-            {player.name} {isCurrentUser && '(You)'}
-        </span>
+        <div className="flex items-center gap-3">
+            {player.isReady ? (
+                <div className="w-5 h-5 flex items-center justify-center bg-green-500 rounded-full" title="Ready">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                </div>
+            ) : (
+                <div className="w-5 h-5 bg-gray-600 rounded-full" title="Not Ready"></div>
+            )}
+            <span className={`font-semibold ${isCurrentUser ? 'text-green-400' : 'text-gray-300'}`}>
+                {player.name} {isCurrentUser && '(You)'}
+            </span>
+        </div>
         {player.isHost && <span className="text-xs font-bold bg-yellow-500 text-gray-900 px-2 py-1 rounded-full">HOST</span>}
     </div>
 );
 
 const Lobby: React.FC = () => {
-  const { roomCode, players, drawPlayers, leaveGame, isLoading, lastActionMessage, sessionId } = useGame();
+  const { roomCode, players, drawPlayers, leaveGame, isLoading, lastActionMessage, sessionId, toggleReady } = useGame();
   
   const currentUser = players.find(p => p.id === sessionId);
   const isUserHost = !!currentUser?.isHost;
 
+  const nonHostPlayers = players.filter(p => !p.isHost);
+  const allPlayersReady = nonHostPlayers.every(p => p.isReady);
+  const canStartGame = isUserHost && (nonHostPlayers.length > 0 ? allPlayersReady : true) && players.length > 1;
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(roomCode);
   };
+
+  const getHostButtonText = () => {
+    if (isLoading) return 'Loading Player Data...';
+    if (players.length <= 1) return 'Waiting for players...';
+    if (!allPlayersReady) return 'Waiting for players to be ready...';
+    return 'Draw Players';
+  }
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[80vh]">
@@ -52,13 +73,29 @@ const Lobby: React.FC = () => {
             {isUserHost ? (
                 <button 
                     onClick={drawPlayers}
-                    disabled={isLoading}
-                    className="w-full bg-green-500 text-gray-900 font-bold py-3 rounded-lg hover:bg-green-400 transition-all duration-300 transform hover:scale-105 disabled:bg-gray-600 disabled:cursor-wait"
+                    disabled={isLoading || !canStartGame}
+                    className="w-full bg-green-500 text-gray-900 font-bold py-3 rounded-lg hover:bg-green-400 transition-all duration-300 transform hover:scale-105 disabled:bg-gray-600 disabled:cursor-not-allowed"
                 >
-                    {isLoading ? 'Loading Player Data...' : 'Draw Players'}
+                    {getHostButtonText()}
                 </button>
             ) : (
-                <p className="text-center text-teal-300 animate-pulse">Waiting for the host to start the game...</p>
+                <button
+                    onClick={toggleReady}
+                    className={`w-full font-bold py-3 rounded-lg transition-all duration-300 transform hover:scale-105 ${
+                        currentUser?.isReady 
+                        ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-400' 
+                        : 'bg-teal-500 text-white hover:bg-teal-400'
+                    }`}
+                >
+                    {currentUser?.isReady ? 'Set to Not Ready' : 'Ready Up!'}
+                </button>
+            )}
+            
+            {!isUserHost && !currentUser?.isReady && (
+                <p className="text-center text-teal-300 animate-pulse mt-4">Waiting for you to be ready...</p>
+            )}
+            {!isUserHost && currentUser?.isReady && (
+                 <p className="text-center text-gray-400 mt-4">Waiting for the host to start the game...</p>
             )}
             
             {lastActionMessage.startsWith('Error') && (

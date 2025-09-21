@@ -1,4 +1,3 @@
-
 export enum CricketerRole {
   Batsman = 'Batsman',
   Bowler = 'Bowler',
@@ -24,6 +23,7 @@ export interface Player {
   budget: number;
   squad: Cricketer[];
   isHost: boolean;
+  isReady: boolean;
 }
 
 export type GameStatus = 'HOME' | 'LOBBY' | 'AUCTION_POOL_VIEW' | 'AUCTION' | 'ROUND_OVER' | 'GAME_OVER' | 'SUBPOOL_BREAK';
