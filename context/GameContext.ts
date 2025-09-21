@@ -32,6 +32,8 @@ export interface GameState {
   // New properties for unsold players round
   unsoldPool: Cricketer[];
   isSecondRound: boolean;
+  // New property for image preloading
+  nextPlayerForAuction: Cricketer | null;
 }
 
 export interface GameContextType extends GameState {

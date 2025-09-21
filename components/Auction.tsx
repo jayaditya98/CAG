@@ -274,13 +274,14 @@ const Auction: React.FC = () => {
         subPools, subPoolOrder, currentSubPoolOrderIndex, currentPlayerInSubPoolIndex,
         currentSubPoolName, currentSubPoolPlayers,
         nextSubPoolName, nextSubPoolPlayers, continueToNextSubPool, toggleReady,
-        sessionId
+        sessionId, nextPlayerForAuction
     } = useGame();
     
     const [isSubPoolModalVisible, setIsSubPoolModalVisible] = useState(false);
     const [isBreakModalVisible, setIsBreakModalVisible] = useState(true);
     const [isMyTeamModalVisible, setIsMyTeamModalVisible] = useState(false);
     const [timeLeft, setTimeLeft] = useState(TURN_DURATION_SECONDS);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         if (gameStatus === 'AUCTION') {
@@ -298,18 +299,53 @@ const Auction: React.FC = () => {
         }
     }, [gameStatus]);
 
+    // Re-enable action buttons on new turn or game status change
+    useEffect(() => {
+        setIsSubmitting(false);
+    }, [activePlayerId, gameStatus]);
+    
+    // Preload images for smoother transitions
+    useEffect(() => {
+        const preloadImage = (url: string) => {
+            const img = new Image();
+            img.src = url;
+        };
+
+        // Preload next single player during the round over screen
+        if (gameStatus === 'ROUND_OVER' && nextPlayerForAuction?.image) {
+            preloadImage(nextPlayerForAuction.image);
+        }
+        
+        // Preload all players for the next sub-pool during the pre-round timer
+        if (gameStatus === 'PRE_ROUND_TIMER' && nextSubPoolPlayers?.length > 0) {
+            nextSubPoolPlayers.forEach(player => {
+                if (player.image) {
+                    preloadImage(player.image);
+                }
+            });
+        }
+    }, [gameStatus, nextPlayerForAuction, nextSubPoolPlayers]);
+
+
     const user = players.find(p => p.id === sessionId);
     const otherPlayers = players.filter(p => p.id !== sessionId);
     const allNonHostsReady = players.filter(p => !p.isHost).every(p => p.isReady);
 
     const isMyTurn = activePlayerId === sessionId;
     const amIInRound = playersInRound.includes(sessionId);
+    const canPerformAction = isMyTurn && amIInRound && !isSubmitting;
 
     const winnerId = gameStatus === 'ROUND_OVER' ? auctionHistory[auctionHistory.length-1]?.winnerId : null;
     const winner = players.find(p => p.id === winnerId);
     const isUnsold = gameStatus === 'ROUND_OVER' && winnerId === 'UNSOLD';
     
     const displayedCricketer = gameStatus === 'ROUND_OVER' ? auctionHistory[auctionHistory.length - 1]?.cricketer : currentPlayerForAuction;
+
+    const handleAction = (action: () => void) => {
+        if (!canPerformAction) return;
+        setIsSubmitting(true);
+        action();
+    };
 
     const getPlayerProps = (player: Player) => ({
         player,
@@ -394,9 +430,9 @@ const Auction: React.FC = () => {
 
             <div className="flex-shrink-0 pt-2">
                 <div className="grid grid-cols-2 gap-2 md:gap-3">
-                    <button onClick={placeBid} disabled={!isMyTurn || !amIInRound} className="col-span-2 py-3 text-lg font-bold bg-green-600 text-white rounded-lg hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition transform hover:scale-105 disabled:transform-none">BID +{bidIncrement}</button>
-                    <button onClick={dropFromRound} disabled={!isMyTurn || !amIInRound} className="py-2 font-bold bg-red-700 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed transition">DROP</button>
-                    <button onClick={passTurn} disabled={!isMyTurn || !amIInRound} className="py-2 font-bold bg-yellow-600 text-white rounded-lg hover:bg-yellow-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition">PASS</button>
+                    <button onClick={() => handleAction(placeBid)} disabled={!canPerformAction} className="col-span-2 py-3 text-lg font-bold bg-green-600 text-white rounded-lg hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition transform hover:scale-105 disabled:transform-none">BID +{bidIncrement}</button>
+                    <button onClick={() => handleAction(dropFromRound)} disabled={!canPerformAction} className="py-2 font-bold bg-red-700 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed transition">DROP</button>
+                    <button onClick={() => handleAction(passTurn)} disabled={!canPerformAction} className="py-2 font-bold bg-yellow-600 text-white rounded-lg hover:bg-yellow-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition">PASS</button>
                 </div>
             </div>
 

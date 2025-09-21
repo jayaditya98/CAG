@@ -55,6 +55,7 @@ const initialStateFactory = (sessionId: string, playerName: string): GameState =
   // New properties for unsold players round
   unsoldPool: [],
   isSecondRound: false,
+  nextPlayerForAuction: null,
 });
 
 interface GameProviderProps {
