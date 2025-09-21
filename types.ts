@@ -24,6 +24,7 @@ export interface Player {
   squad: Cricketer[];
   isHost: boolean;
   isReady: boolean;
+  // FIX: Add readyForAuction to distinguish from lobby ready state.
   readyForAuction: boolean;
 }
 
