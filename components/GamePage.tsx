@@ -4,6 +4,7 @@ import { useGame } from '../context/useGame';
 import Lobby from './Lobby';
 import Auction from './Auction';
 import AuctionPoolView from './AuctionPoolView';
+import PreRoundTimer from './PreRoundTimer';
 
 const GamePage: React.FC = () => {
   const { gameStatus } = useGame();
@@ -12,6 +13,7 @@ const GamePage: React.FC = () => {
     <div className="container mx-auto p-2 md:p-4 max-w-7xl h-screen">
       {gameStatus === 'LOBBY' && <Lobby />}
       {gameStatus === 'AUCTION_POOL_VIEW' && <AuctionPoolView />}
+      {gameStatus === 'PRE_ROUND_TIMER' && <PreRoundTimer />}
       {(gameStatus === 'AUCTION' || gameStatus === 'ROUND_OVER' || gameStatus === 'SUBPOOL_BREAK') && <Auction />}
       {gameStatus === 'GAME_OVER' && (
         <div className="flex items-center justify-center h-full text-4xl font-bold">

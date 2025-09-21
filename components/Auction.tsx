@@ -3,9 +3,18 @@ import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/useGame';
 import type { Player, Cricketer } from '../types';
 import { CricketerRole } from '../types';
-import { TURN_DURATION_SECONDS } from '../constants';
+import { TURN_DURATION_SECONDS, ROUND_OVER_DURATION_MS } from '../constants';
 import type { GameState } from '../context/GameContext';
 import Modal from './Modal';
+
+// --- Utility Functions ---
+const shrinkName = (name: string): string => {
+    const parts = name.split(' ');
+    if (parts.length > 1) {
+        return `${parts[0].charAt(0)}. ${parts.slice(-1)[0]}`;
+    }
+    return name;
+};
 
 // --- Re-usable Icon Component ---
 const RoleIcon: React.FC<{ role: CricketerRole }> = ({ role }) => {
@@ -54,7 +63,7 @@ const DetailedRoleIcon: React.FC<{ role: CricketerRole }> = ({ role }) => {
     }
 };
 
-// --- New Timer Component ---
+// --- Timer Component ---
 const TimerCircle: React.FC<{ timeLeft: number; duration: number }> = ({ timeLeft, duration }) => {
   const normalizedTime = Math.max(0, timeLeft / duration);
   const circumference = 2 * Math.PI * 16; // r=16
@@ -98,7 +107,7 @@ const TimerCircle: React.FC<{ timeLeft: number; duration: number }> = ({ timeLef
 // --- Layout-Specific Components for this view ---
 const CompactCricketerCard: React.FC<{ cricketer: Cricketer | null, winner?: Player | null, isUnsold?: boolean }> = ({ cricketer, winner, isUnsold }) => {
     if (!cricketer) {
-        return <div className="h-full flex items-center justify-center bg-gray-800 rounded-lg text-gray-400 p-2">Loading next player...</div>;
+        return <div className="h-full flex items-center justify-center bg-gray-800 rounded-lg text-gray-400 p-2">Waiting for next player...</div>;
     }
     
     return (
@@ -153,11 +162,9 @@ const CompactCricketerCard: React.FC<{ cricketer: Cricketer | null, winner?: Pla
     );
 };
 
-const MyTeamSummary: React.FC<{ player: Player | undefined; auctionHistory: GameState['auctionHistory'] }> = ({ player, auctionHistory }) => {
-    const winningBidMap = new Map(auctionHistory.map(h => [h.cricketer.id, h.winningBid]));
-
+const MyTeamSummary: React.FC<{ player: Player | undefined; onOpenModal: () => void }> = ({ player, onOpenModal }) => {
     return (
-        <div className="bg-gray-800 p-2 md:p-3 rounded-lg border border-gray-700 flex flex-col h-full overflow-hidden">
+        <div onClick={onOpenModal} className="bg-gray-800 p-2 md:p-3 rounded-lg border border-gray-700 flex flex-col h-full overflow-hidden cursor-pointer hover:border-green-400/50 transition">
             <p className="font-bold text-md md:text-lg text-center text-green-300 flex-shrink-0 pb-2 border-b border-gray-700">My Team ({player?.squad.length || 0})</p>
             <div className="mt-2 flex-grow overflow-y-auto pr-1 no-scrollbar">
                 {player?.squad.length === 0 ? (
@@ -167,20 +174,54 @@ const MyTeamSummary: React.FC<{ player: Player | undefined; auctionHistory: Game
                 ) : (
                     <div className="space-y-1">
                         {player?.squad.map(cricketer => (
-                            <div key={cricketer.id} className="flex items-center justify-between bg-gray-900/50 p-1.5 rounded-md text-xs md:text-sm">
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                    <div className="flex-shrink-0 w-6 flex items-center justify-center">
-                                      <DetailedRoleIcon role={cricketer.role} />
-                                    </div>
-                                    <span className="font-semibold text-gray-200 truncate">{cricketer.name}</span>
-                                </div>
-                                <span className="font-mono text-green-400 font-bold ml-2">{winningBidMap.get(cricketer.id) || cricketer.basePrice}</span>
+                            <div key={cricketer.id} className="grid grid-cols-[auto_1fr_auto_auto] gap-x-2 items-center bg-gray-900/50 p-1.5 rounded-md text-xs md:text-sm">
+                                <div className="w-5 flex items-center justify-center"><DetailedRoleIcon role={cricketer.role} /></div>
+                                <span className="font-semibold text-gray-200 truncate">{shrinkName(cricketer.name)}</span>
+                                <span className="font-bold text-gray-300 pr-2">{cricketer.overall}</span>
+                                <span className="font-mono text-green-400 font-bold">{cricketer.basePrice}</span>
                             </div>
                         ))}
                     </div>
                 )}
             </div>
         </div>
+    );
+};
+
+const MyTeamDetailsModal: React.FC<{isVisible: boolean; onClose: () => void; squad: Cricketer[]}> = ({isVisible, onClose, squad}) => {
+    return (
+        <Modal isVisible={isVisible} onClose={onClose} title="My Team Details">
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto no-scrollbar pr-2">
+                {squad.length > 0 ? squad.map(player => (
+                    <div key={player.id} className="bg-gray-700/50 p-3 rounded-lg grid grid-cols-2 gap-x-4 gap-y-2">
+                        <div className="col-span-2 flex items-center gap-3">
+                            <DetailedRoleIcon role={player.role} />
+                            <h3 className="text-lg font-bold text-white">{player.name}</h3>
+                        </div>
+                        <div className="text-center bg-gray-800/50 p-2 rounded-md">
+                            <p className="text-xs text-gray-400">Overall</p>
+                            <p className="text-2xl font-bold text-green-400">{player.overall}</p>
+                        </div>
+                        <div className="text-center bg-gray-800/50 p-2 rounded-md">
+                            <p className="text-xs text-gray-400">Base Price</p>
+                            <p className="text-2xl font-bold text-gray-300">{player.basePrice}</p>
+                        </div>
+                        <div className="text-center bg-gray-800/50 p-2 rounded-md">
+                            <p className="text-xs text-gray-400">Batting</p>
+                            <p className="text-xl font-bold text-amber-300">{player.battingOVR}</p>
+                        </div>
+                        <div className="text-center bg-gray-800/50 p-2 rounded-md">
+                            <p className="text-xs text-gray-400">Bowling</p>
+                            <p className="text-xl font-bold text-red-400">{player.bowlingOVR}</p>
+                        </div>
+                         <div className="col-span-2 text-center bg-gray-800/50 p-2 rounded-md">
+                            <p className="text-xs text-gray-400">Fielding</p>
+                            <p className="text-xl font-bold text-sky-300">{player.fieldingOVR}</p>
+                        </div>
+                    </div>
+                )) : <p className="text-center text-gray-400">Your squad is empty.</p>}
+            </div>
+        </Modal>
     );
 };
 
@@ -206,22 +247,24 @@ const PlayerAvatar: React.FC<{ player: Player, isActive: boolean, isHighestBidde
     );
 };
 
-const PlayerReadyStatus: React.FC<{ player: Player }> = ({ player }) => (
-    <div className="flex items-center justify-between bg-gray-700/50 p-3 rounded-lg">
-        <span className='font-semibold text-gray-200'>{player.name}</span>
-        {player.isReady ? (
-            <div className="flex items-center gap-2 text-green-400">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                <span>Ready</span>
-            </div>
-        ) : (
-            <div className="flex items-center gap-2 text-yellow-400 animate-pulse">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
-                <span>Not Ready</span>
-            </div>
-        )}
-    </div>
-);
+const RoundOverTimer: React.FC = () => {
+    const [countdown, setCountdown] = useState(ROUND_OVER_DURATION_MS / 1000);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCountdown(prev => (prev > 1 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    return (
+        <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50">
+            <p className="text-2xl text-gray-300 mb-4">Next player in...</p>
+            <p className="text-8xl font-bold text-white">{countdown}</p>
+        </div>
+    );
+};
+
 
 const Auction: React.FC = () => {
     const { 
@@ -229,37 +272,35 @@ const Auction: React.FC = () => {
         highestBidderId, activePlayerId, playersInRound,
         placeBid, passTurn, dropFromRound, auctionHistory,
         subPools, subPoolOrder, currentSubPoolOrderIndex, currentPlayerInSubPoolIndex,
+        currentSubPoolName, currentSubPoolPlayers,
         nextSubPoolName, nextSubPoolPlayers, continueToNextSubPool, toggleReady,
         sessionId
     } = useGame();
+    
     const [isSubPoolModalVisible, setIsSubPoolModalVisible] = useState(false);
+    const [isBreakModalVisible, setIsBreakModalVisible] = useState(true);
+    const [isMyTeamModalVisible, setIsMyTeamModalVisible] = useState(false);
     const [timeLeft, setTimeLeft] = useState(TURN_DURATION_SECONDS);
 
     useEffect(() => {
-        if (gameStatus !== 'AUCTION') {
-            return;
+        if (gameStatus === 'AUCTION') {
+            setTimeLeft(TURN_DURATION_SECONDS); // Reset on new turn
+            const intervalId = setInterval(() => {
+                setTimeLeft(prevTime => prevTime > 0.1 ? prevTime - 0.1 : 0);
+            }, 100);
+            return () => clearInterval(intervalId);
         }
-
-        setTimeLeft(TURN_DURATION_SECONDS); // Reset on new turn
-
-        const intervalId = setInterval(() => {
-            setTimeLeft((prevTime) => {
-                if (prevTime <= 0.1) {
-                    clearInterval(intervalId);
-                    return 0;
-                }
-                return prevTime - 0.1;
-            });
-        }, 100);
-
-        return () => clearInterval(intervalId);
     }, [activePlayerId, gameStatus]);
-
+    
+    useEffect(() => {
+        if(gameStatus === 'SUBPOOL_BREAK') {
+            setIsBreakModalVisible(true); // Re-show the modal when a new break starts
+        }
+    }, [gameStatus]);
 
     const user = players.find(p => p.id === sessionId);
     const otherPlayers = players.filter(p => p.id !== sessionId);
-    const nonHostPlayers = players.filter(p => !p.isHost);
-    const allNonHostsReady = nonHostPlayers.every(p => p.isReady);
+    const allNonHostsReady = players.filter(p => !p.isHost).every(p => p.isReady);
 
     const isMyTurn = activePlayerId === sessionId;
     const amIInRound = playersInRound.includes(sessionId);
@@ -268,7 +309,7 @@ const Auction: React.FC = () => {
     const winner = players.find(p => p.id === winnerId);
     const isUnsold = gameStatus === 'ROUND_OVER' && winnerId === 'UNSOLD';
     
-    const soldCricketer = gameStatus === 'ROUND_OVER' ? auctionHistory[auctionHistory.length - 1]?.cricketer : currentPlayerForAuction;
+    const displayedCricketer = gameStatus === 'ROUND_OVER' ? auctionHistory[auctionHistory.length - 1]?.cricketer : currentPlayerForAuction;
 
     const getPlayerProps = (player: Player) => ({
         player,
@@ -286,25 +327,12 @@ const Auction: React.FC = () => {
     };
     const bidIncrement = getBidIncrement(currentBid);
     
-    // --- New Progress Bar Logic ---
-    const currentSubPoolName = subPoolOrder[currentSubPoolOrderIndex] || '';
-    const currentPool = subPools[currentSubPoolName] || [];
-    const totalInPool = currentPool.length;
-    // +1 because index is 0-based
+    const poolForProgress = subPools[currentSubPoolName] || [];
+    const totalInPool = poolForProgress.length;
     const currentNumberInPool = currentPlayerInSubPoolIndex + 1;
-    // Protect against division by zero and negative numbers/bad states
     const progressPercent = totalInPool > 0 ? Math.max(0, (currentNumberInPool / totalInPool) * 100) : 0;
     
-    // --- Modal Logic ---
-    const soldPlayersInPool = auctionHistory.filter(h => 
-        currentPool.some(p => p.id === h.cricketer.id)
-    );
-    const soldPlayerIds = new Set(soldPlayersInPool.map(p => p.cricketer.id));
-    const upcomingPlayers = currentPool.filter(p => 
-        !soldPlayerIds.has(p.id) && p.id !== currentPlayerForAuction?.id
-    );
-
-    const finishedSubPoolSummary = (subPools[subPoolOrder[currentSubPoolOrderIndex-1]] || []).map(player => {
+    const finishedSubPoolSummary = currentSubPoolPlayers.map(player => {
         const historyEntry = auctionHistory.find(h => h.cricketer.id === player.id);
         if (historyEntry) {
             if (historyEntry.winnerId === 'UNSOLD') {
@@ -318,8 +346,10 @@ const Auction: React.FC = () => {
 
 
     return (
-        <div className="h-full flex flex-col p-1 md:p-2 gap-2 text-sm md:text-base overflow-hidden">
-            {(gameStatus === 'AUCTION' || gameStatus === 'ROUND_OVER') && currentSubPoolName && totalInPool > 0 && (
+        <div className="h-full flex flex-col p-1 md:p-2 gap-2 text-sm md:text-base overflow-hidden relative">
+            {gameStatus === 'ROUND_OVER' && <RoundOverTimer />}
+            
+            {(gameStatus === 'AUCTION' || gameStatus === 'ROUND_OVER' || (gameStatus === 'SUBPOOL_BREAK' && !isBreakModalVisible)) && currentSubPoolName && totalInPool > 0 && (
                 <div 
                     onClick={() => setIsSubPoolModalVisible(true)}
                     className="flex-shrink-0 bg-gray-800/50 p-3 rounded-lg cursor-pointer hover:bg-gray-700/50 transition border border-gray-700 mb-2 space-y-2"
@@ -339,9 +369,9 @@ const Auction: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-2 md:gap-4 flex-shrink-0 h-[220px] md:h-[260px]">
                 <div className="relative">
-                    <CompactCricketerCard cricketer={soldCricketer} winner={winner} isUnsold={isUnsold} />
+                    <CompactCricketerCard cricketer={displayedCricketer} winner={winner} isUnsold={isUnsold} />
                 </div>
-                <MyTeamSummary player={user} auctionHistory={auctionHistory} />
+                <MyTeamSummary player={user} onOpenModal={() => setIsMyTeamModalVisible(true)} />
             </div>
 
             <div className="flex-grow relative flex items-center justify-center bg-gray-900/30 rounded-lg p-2 md:p-4 border border-gray-700/50">
@@ -370,59 +400,54 @@ const Auction: React.FC = () => {
                 </div>
             </div>
 
+            {/* FIX: Added content for the sub-pool details modal to resolve missing 'children' prop error. */}
             <Modal isVisible={isSubPoolModalVisible} onClose={() => setIsSubPoolModalVisible(false)} title={`Sub-Pool Details: ${currentSubPoolName}`}>
-                <div className="space-y-4 text-gray-300">
-                    {currentPlayerForAuction && (
-                        <div>
-                            <h3 className="text-lg font-bold text-green-400 border-b border-gray-600 pb-2 mb-2">Currently Auctioning</h3>
-                            <div className="grid grid-cols-3 gap-2 items-center p-2 bg-gray-700/50 rounded-md">
-                                <span className="font-semibold truncate">{currentPlayerForAuction.name}</span>
-                                <span className="font-bold text-center">{currentPlayerForAuction.overall}</span>
-                                <span className="text-xs text-gray-400 text-right">Base: {currentPlayerForAuction.basePrice}</span>
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto no-scrollbar pr-2">
+                    {(subPools[currentSubPoolName] || []).map((player, index) => {
+                        const historyEntry = auctionHistory.find(h => h.cricketer.id === player.id);
+                        const isCurrent = index === currentPlayerInSubPoolIndex && gameStatus === 'AUCTION';
+                        
+                        let status = 'Upcoming';
+                        let soldTo = '-';
+                        let price = 0;
+
+                        if (historyEntry) {
+                            if (historyEntry.winnerId === 'UNSOLD') {
+                                status = 'Unsold';
+                            } else {
+                                status = 'Sold';
+                                const winner = players.find(p => p.id === historyEntry.winnerId);
+                                soldTo = winner?.name || 'Unknown';
+                                price = historyEntry.winningBid;
+                            }
+                        } else if (isCurrent) {
+                            status = 'In Auction';
+                        }
+
+                        return (
+                            <div key={player.id} className={`grid grid-cols-3 gap-2 items-center p-2 rounded-md ${
+                                isCurrent ? 'bg-green-900/50 ring-2 ring-green-500' : 
+                                !historyEntry && !isCurrent ? 'bg-gray-700/30' : 
+                                status === 'Unsold' ? 'bg-red-900/30' : 'bg-gray-700/50'
+                            }`}>
+                                <div className="truncate">
+                                    <p className="font-semibold truncate">{player.name}</p>
+                                    <p className="text-xs text-gray-400">
+                                        {status === 'Sold' ? `Sold to ${soldTo}` : status}
+                                    </p>
+                                </div>
+                                <span className="font-bold text-center">{player.overall}</span>
+                                {status === 'Sold'
+                                  ? <span className="font-mono font-bold text-green-400 text-right">{price}</span>
+                                  : <p className="text-right text-xs text-gray-400">Base: <span className="font-bold text-white">{player.basePrice}</span></p>
+                                }
                             </div>
-                        </div>
-                    )}
-                    <div>
-                        <h3 className="text-lg font-bold text-red-400 border-b border-gray-600 pb-2 mb-2">Sold Players ({soldPlayersInPool.length})</h3>
-                        {soldPlayersInPool.length > 0 ? (
-                            <div className="space-y-2">
-                                {soldPlayersInPool.map(item => {
-                                    const winner = players.find(p => p.id === item.winnerId);
-                                    return (
-                                        <div key={item.cricketer.id} className="grid grid-cols-3 gap-2 items-center p-2 bg-gray-700/50 rounded-md opacity-70">
-                                            <div className="truncate">
-                                                <p className="font-semibold truncate">{item.cricketer.name}</p>
-                                                <p className="text-xs text-gray-400">Sold to {winner?.name || 'Unknown'}</p>
-                                            </div>
-                                            <span className="font-bold text-center">{item.cricketer.overall}</span>
-                                            <span className="font-mono font-bold text-green-400 text-right">{item.winningBid}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : <p className="text-gray-500 text-sm">No players sold from this pool yet.</p>}
-                    </div>
-                    <div>
-                        <h3 className="text-lg font-bold text-sky-400 border-b border-gray-600 pb-2 mb-2">Upcoming Players ({upcomingPlayers.length})</h3>
-                        {upcomingPlayers.length > 0 ? (
-                            <div className="space-y-2">
-                                {upcomingPlayers.map(player => (
-                                    <div key={player.id} className="grid grid-cols-3 gap-2 items-center p-2 bg-gray-700/50 rounded-md">
-                                        <div className="truncate">
-                                            <p className="font-semibold truncate">{player.name}</p>
-                                            <p className="text-xs text-gray-400">{player.role}</p>
-                                        </div>
-                                        <span className="font-bold text-center">{player.overall}</span>
-                                        <p className="text-right text-xs text-gray-400">Base: <span className="font-bold text-white">{player.basePrice}</span></p>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : <p className="text-gray-500 text-sm">No more players in this pool.</p>}
-                    </div>
+                        );
+                    })}
                 </div>
             </Modal>
             
-            <Modal isVisible={gameStatus === 'SUBPOOL_BREAK'} onClose={() => {}} title={`Sub-Pool Over: ${subPoolOrder[currentSubPoolOrderIndex] || ''}`}>
+            <Modal isVisible={gameStatus === 'SUBPOOL_BREAK' && isBreakModalVisible} onClose={() => setIsBreakModalVisible(false)} title={`Sub-Pool '${currentSubPoolName}' has ended.`}>
                 <div className="space-y-4">
                     <div>
                         <h3 className="text-lg font-bold text-green-400 border-b border-gray-600 pb-2 mb-3">Finished Sub-Pool Summary</h3>
@@ -459,11 +484,6 @@ const Auction: React.FC = () => {
                             ))}
                         </div>
                     </div>
-
-                    <div className="space-y-3 pt-3 border-t border-gray-600">
-                        <h3 className="text-md font-bold text-gray-300">Player Status</h3>
-                        {players.map(p => <PlayerReadyStatus key={p.id} player={p} />)}
-                    </div>
                     
                     {user?.isHost ? (
                         <button 
@@ -489,7 +509,9 @@ const Auction: React.FC = () => {
                 </div>
             </Modal>
 
-            <style>{`.bg-cricket-pitch-bg { background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"); }`}</style>
+            <MyTeamDetailsModal isVisible={isMyTeamModalVisible} onClose={() => setIsMyTeamModalVisible(false)} squad={user?.squad || []} />
+
+            <style>{`.bg-cricket-pitch-bg { background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"); }`}</style>
         </div>
     );
 };

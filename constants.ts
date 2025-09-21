@@ -1,5 +1,6 @@
 
 export const STARTING_BUDGET = 10000;
 export const TURN_DURATION_SECONDS = 7;
-export const ROUND_OVER_DURATION_MS = 4000;
+export const ROUND_OVER_DURATION_MS = 5000;
+export const PRE_ROUND_DURATION_SECONDS = 10;
 export const TOTAL_PLAYERS_TO_AUCTION = 60;
