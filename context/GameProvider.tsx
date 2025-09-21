@@ -52,6 +52,9 @@ const initialStateFactory = (sessionId: string, playerName: string): GameState =
   // New properties for robust progress tracking
   currentSubPoolOrderIndex: 0,
   currentPlayerInSubPoolIndex: -1,
+  // New properties for unsold players round
+  unsoldPool: [],
+  isSecondRound: false,
 });
 
 interface GameProviderProps {

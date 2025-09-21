@@ -29,6 +29,9 @@ export interface GameState {
   // New properties for robust progress tracking
   currentSubPoolOrderIndex: number;
   currentPlayerInSubPoolIndex: number;
+  // New properties for unsold players round
+  unsoldPool: Cricketer[];
+  isSecondRound: boolean;
 }
 
 export interface GameContextType extends GameState {
