@@ -32,8 +32,6 @@ export interface GameState {
   // New properties for unsold players round
   unsoldPool: Cricketer[];
   isSecondRound: boolean;
-  // New property for image preloading
-  nextPlayerForAuction: Cricketer | null;
 }
 
 export interface GameContextType extends GameState {
@@ -46,7 +44,6 @@ export interface GameContextType extends GameState {
   continueToNextSubPool: () => void;
   toggleReady: () => void;
   toggleReadyForAuction: () => void;
-  openMyTeamModal: () => void;
 }
 
 export const GameContext = React.createContext<GameContextType | undefined>(undefined);

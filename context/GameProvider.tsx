@@ -55,7 +55,6 @@ const initialStateFactory = (sessionId: string, playerName: string): GameState =
   // New properties for unsold players round
   unsoldPool: [],
   isSecondRound: false,
-  nextPlayerForAuction: null,
 });
 
 interface GameProviderProps {
@@ -156,10 +155,9 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
   const continueToNextSubPool = () => sendAction('CONTINUE_TO_NEXT_SUBPOOL');
   const toggleReady = () => sendAction('TOGGLE_READY');
   const toggleReadyForAuction = () => sendAction('TOGGLE_READY_FOR_AUCTION');
-  const openMyTeamModal = () => {}; // Dummy function, implementation is in the component
 
   return (
-    <GameContext.Provider value={{ ...state, drawPlayers, startGame, placeBid, passTurn, dropFromRound, leaveGame, continueToNextSubPool, toggleReady, toggleReadyForAuction, openMyTeamModal }}>
+    <GameContext.Provider value={{ ...state, drawPlayers, startGame, placeBid, passTurn, dropFromRound, leaveGame, continueToNextSubPool, toggleReady, toggleReadyForAuction }}>
       {children}
     </GameContext.Provider>
   );
