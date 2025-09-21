@@ -1,3 +1,4 @@
+
 import React, { useReducer, useEffect, useCallback, useRef } from 'react';
 import { GameContext } from './GameContext';
 import type { GameState } from './GameContext';
@@ -334,15 +335,23 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
       console.log("Setting up HOST subscriptions.");
       
       const syncAndBroadcastPlayers = async () => {
-        const { data, error } = await supabase.from('players').select('session_id, name, is_host, is_ready, readyForAuction').eq('room_code', roomCode);
+        const { data, error } = await supabase.from('players').select('session_id, name, is_host, is_ready').eq('room_code', roomCode);
         if (error) {
           console.error("Host Error: Could not fetch players:", error);
         } else if (data) {
-          const players: Player[] = data.map((p) => ({
-            id: p.session_id, name: p.name, isHost: p.is_host, isReady: p.is_ready, readyForAuction: p.readyForAuction,
-            budget: stateRef.current.players.find(pl => pl.id === p.session_id)?.budget || STARTING_BUDGET,
-            squad: stateRef.current.players.find(pl => pl.id === p.session_id)?.squad || [],
-          }));
+          const gameStatus = stateRef.current.gameStatus;
+          const players: Player[] = data.map((p) => {
+            const isLobby = gameStatus === 'LOBBY';
+            return {
+              id: p.session_id,
+              name: p.name,
+              isHost: p.is_host,
+              isReady: isLobby ? p.is_ready : true,
+              readyForAuction: !isLobby ? p.is_ready : p.is_host,
+              budget: stateRef.current.players.find(pl => pl.id === p.session_id)?.budget || STARTING_BUDGET,
+              squad: stateRef.current.players.find(pl => pl.id === p.session_id)?.squad || [],
+            };
+          });
           handleHostAction({ type: 'SET_PLAYERS', payload: players });
         }
       };
@@ -371,7 +380,7 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
               await supabase.from('players').update({ is_ready: newReadyState }).eq('session_id', action.payload.playerId);
           } else if (action.type === 'TOGGLE_READY_FOR_AUCTION') {
               const newReadyState = !player.readyForAuction;
-              await supabase.from('players').update({ readyForAuction: newReadyState }).eq('session_id', action.payload.playerId);
+              await supabase.from('players').update({ is_ready: newReadyState }).eq('session_id', action.payload.playerId);
           }
       }).subscribe();
 
@@ -427,7 +436,28 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
   const toggleReady = () => { if (!isHost) sendClientAction({ type: 'TOGGLE_READY', payload: { playerId: sessionId } }); };
   const toggleReadyForAuction = () => { if (!isHost) sendClientAction({ type: 'TOGGLE_READY_FOR_AUCTION', payload: { playerId: sessionId } }); };
   
-  const drawPlayers = () => { if(isHost) handleHostAction({ type: 'DRAW_PLAYERS' }); };
+  const drawPlayers = () => {
+    if (isHost) {
+      // On transition to AUCTION_POOL_VIEW, reset `is_ready` flags in DB.
+      // Host is auto-ready, clients must ready up again for the auction.
+      const updates = state.players.map(p => ({
+        session_id: p.id,
+        is_ready: p.isHost,
+      }));
+
+      supabase.from('players').upsert(updates).then(({ error }) => {
+        if (error) {
+          console.error("Host Error: Failed to reset player ready states for auction pool:", error);
+        } else {
+          // The DB update will trigger the host's subscription, which syncs players.
+          // Now, dispatch the action to change the game state for the host, which
+          // will then be broadcast to all clients.
+          handleHostAction({ type: 'DRAW_PLAYERS' });
+        }
+      });
+    }
+  };
+
   const startGame = () => { if(isHost) handleHostAction({ type: 'START_GAME' }); };
   const continueToNextSubPool = () => { if(isHost) handleHostAction({ type: 'CONTINUE_TO_NEXT_SUBPOOL' }); };
   

@@ -105,7 +105,7 @@ const App: React.FC = () => {
         console.log(`Creating player record for ${name} in room ${newRoomCode}...`);
         const { error: playerError } = await supabase
           .from('players')
-          .upsert({ session_id: sessionId, room_code: newRoomCode, name: name, is_host: true, is_ready: true, readyForAuction: true });
+          .upsert({ session_id: sessionId, room_code: newRoomCode, name: name, is_host: true, is_ready: true });
 
         if (playerError) {
             console.error("CRITICAL: Error creating player:", playerError);
@@ -195,7 +195,6 @@ const App: React.FC = () => {
         name: finalName, 
         is_host: false, // GUARANTEED false
         is_ready: false,
-        readyForAuction: false
       });
       
     if (insertError) {
