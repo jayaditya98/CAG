@@ -160,19 +160,38 @@ const PlayerAvatar: React.FC<{ player: Player, isActive: boolean, isHighestBidde
     );
 };
 
+const PlayerReadyStatus: React.FC<{ player: Player }> = ({ player }) => (
+    <div className="flex items-center justify-between bg-gray-700/50 p-3 rounded-lg">
+        <span className='font-semibold text-gray-200'>{player.name}</span>
+        {player.isReady ? (
+            <div className="flex items-center gap-2 text-green-400">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                <span>Ready</span>
+            </div>
+        ) : (
+            <div className="flex items-center gap-2 text-yellow-400 animate-pulse">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+                <span>Not Ready</span>
+            </div>
+        )}
+    </div>
+);
+
 const Auction: React.FC = () => {
     const { 
         gameStatus, players, currentPlayerForAuction, currentBid, 
         highestBidderId, activePlayerId, playersInRound,
         placeBid, passTurn, dropFromRound, auctionHistory,
         subPools, subPoolOrder, currentSubPoolOrderIndex, currentPlayerInSubPoolIndex,
-        nextSubPoolName, nextSubPoolPlayers, continueToNextSubPool,
+        nextSubPoolName, nextSubPoolPlayers, continueToNextSubPool, toggleReady,
         sessionId
     } = useGame();
     const [isSubPoolModalVisible, setIsSubPoolModalVisible] = useState(false);
 
     const user = players.find(p => p.id === sessionId);
     const otherPlayers = players.filter(p => p.id !== sessionId);
+    const nonHostPlayers = players.filter(p => !p.isHost);
+    const allNonHostsReady = nonHostPlayers.every(p => p.isReady);
 
     const isMyTurn = activePlayerId === sessionId;
     const amIInRound = playersInRound.includes(sessionId);
@@ -331,8 +350,8 @@ const Auction: React.FC = () => {
                 </div>
             </Modal>
             
-            <Modal isVisible={gameStatus === 'SUBPOOL_BREAK'} onClose={() => {}} title={`Sub-Pool Over: ${subPoolOrder[currentSubPoolOrderIndex - 1] || ''}`}>
-                <div className="space-y-6">
+            <Modal isVisible={gameStatus === 'SUBPOOL_BREAK'} onClose={() => {}} title={`Sub-Pool Over: ${subPoolOrder[currentSubPoolOrderIndex] || ''}`}>
+                <div className="space-y-4">
                     <div>
                         <h3 className="text-lg font-bold text-green-400 border-b border-gray-600 pb-2 mb-3">Finished Sub-Pool Summary</h3>
                         <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar pr-2">
@@ -355,27 +374,44 @@ const Auction: React.FC = () => {
                     </div>
                     <div>
                         <h3 className="text-lg font-bold text-sky-400 border-b border-gray-600 pb-2 mb-3">Upcoming: {nextSubPoolName}</h3>
-                        {nextSubPoolPlayers.length > 0 ? (
-                            <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar pr-2">
-                                {nextSubPoolPlayers.map(player => (
-                                    <div key={player.id} className="grid grid-cols-3 gap-2 items-center p-2 bg-gray-700/50 rounded-md">
-                                        <div className="truncate">
-                                            <p className="font-semibold truncate">{player.name}</p>
-                                            <p className="text-xs text-gray-400">{player.role}</p>
-                                        </div>
-                                        <span className="font-bold text-center">{player.overall}</span>
-                                        <p className="text-right text-xs text-gray-400">Base: <span className="font-bold text-white">{player.basePrice}</span></p>
+                        <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar pr-2">
+                            {nextSubPoolPlayers.map(player => (
+                                <div key={player.id} className="grid grid-cols-3 gap-2 items-center p-2 bg-gray-700/50 rounded-md">
+                                    <div className="truncate">
+                                        <p className="font-semibold truncate">{player.name}</p>
+                                        <p className="text-xs text-gray-400">{player.role}</p>
                                     </div>
-                                ))}
-                            </div>
-                        ) : <p className="text-gray-500 text-sm">This is the final sub-pool.</p>}
+                                    <span className="font-bold text-center">{player.overall}</span>
+                                    <p className="text-right text-xs text-gray-400">Base: <span className="font-bold text-white">{player.basePrice}</span></p>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                    {user?.isHost && (
+
+                    <div className="space-y-3 pt-3 border-t border-gray-600">
+                        <h3 className="text-md font-bold text-gray-300">Player Status</h3>
+                        {players.map(p => <PlayerReadyStatus key={p.id} player={p} />)}
+                    </div>
+                    
+                    {user?.isHost ? (
                         <button 
                             onClick={continueToNextSubPool}
-                            className="w-full mt-4 bg-green-500 text-gray-900 font-bold py-3 rounded-lg hover:bg-green-400 transition-all duration-300"
+                            disabled={!allNonHostsReady}
+                            className="w-full mt-4 bg-green-500 text-gray-900 font-bold py-3 rounded-lg hover:bg-green-400 transition-all duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed"
                         >
-                            Continue to Next Sub-Pool
+                            {allNonHostsReady ? 'Continue to Next Sub-Pool' : 'Waiting for players...'}
+                        </button>
+                    ) : (
+                        <button 
+                            onClick={toggleReady}
+                            className={`w-full mt-4 font-bold py-3 rounded-lg transition-all duration-300 ${
+                                user?.isReady 
+                                ? 'bg-gray-600 cursor-not-allowed'
+                                : 'bg-teal-500 hover:bg-teal-400'
+                            }`}
+                            disabled={user?.isReady}
+                        >
+                            {user?.isReady ? 'Waiting for Host...' : 'Ready for Next Round'}
                         </button>
                     )}
                 </div>
