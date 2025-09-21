@@ -353,12 +353,14 @@ const Auction: React.FC = () => {
                             </div>
                         ) : <p className="text-gray-500 text-sm">This is the final sub-pool.</p>}
                     </div>
-                    <button 
-                        onClick={continueToNextSubPool}
-                        className="w-full mt-4 bg-green-500 text-gray-900 font-bold py-3 rounded-lg hover:bg-green-400 transition-all duration-300"
-                    >
-                        Continue to Next Sub-Pool
-                    </button>
+                    {user?.isHost && (
+                        <button 
+                            onClick={continueToNextSubPool}
+                            className="w-full mt-4 bg-green-500 text-gray-900 font-bold py-3 rounded-lg hover:bg-green-400 transition-all duration-300"
+                        >
+                            Continue to Next Sub-Pool
+                        </button>
+                    )}
                 </div>
             </Modal>
 

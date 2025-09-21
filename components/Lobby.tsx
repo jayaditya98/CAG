@@ -61,7 +61,11 @@ const Lobby: React.FC = () => {
                 <p className="text-center text-teal-300 animate-pulse">Waiting for the host to start the game...</p>
             )}
             
-            {lastActionMessage.startsWith('Error') && <p className="text-center text-red-400 mt-2">{lastActionMessage}</p>}
+            {lastActionMessage.startsWith('Error') && (
+                <div className="text-center text-red-300 bg-red-900/50 border border-red-500/50 rounded-lg p-3 mt-4 min-h-[4rem] flex items-center justify-center">
+                    <p>{lastActionMessage}</p>
+                </div>
+            )}
 
             <button 
                 onClick={leaveGame}

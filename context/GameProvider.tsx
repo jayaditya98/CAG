@@ -6,7 +6,12 @@ import type { Player, Cricketer } from '../types';
 import { CricketerRole } from '../types';
 import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 
-type Action =
+type PlayerAction =
+  | { type: 'PLACE_BID'; payload: { playerId: string } }
+  | { type: 'PASS_TURN'; payload: { playerId: string } }
+  | { type: 'DROP_FROM_ROUND'; payload: { playerId: string } };
+  
+type HostAction =
   | { type: 'SET_GAME_STATE'; payload: Partial<GameState> }
   | { type: 'LOAD_CRICKETERS_SUCCESS'; payload: Cricketer[] }
   | { type: 'LOAD_CRICKETERS_FAILURE' }
@@ -14,13 +19,12 @@ type Action =
   | { type: 'DRAW_PLAYERS' }
   | { type: 'START_GAME' }
   | { type: 'START_NEXT_ROUND' }
-  | { type: 'PLACE_BID'; payload: { playerId: string } }
-  | { type: 'PASS_TURN'; payload: { playerId: string } }
-  | { type: 'DROP_FROM_ROUND'; payload: { playerId: string } }
   | { type: 'AUTO_PASS_TURN' }
   | { type: 'END_ROUND' }
   | { type: 'CONTINUE_TO_NEXT_SUBPOOL' }
   | { type: 'END_GAME' };
+
+type Action = HostAction | PlayerAction;
 
 const shuffleArray = <T,>(array: T[]): T[] => {
   return [...array].sort(() => Math.random() - 0.5);
@@ -84,15 +88,39 @@ const gameReducer = (state: GameState, action: Action): GameState => {
     }
     case 'DRAW_PLAYERS': {
       const { cricketersMasterList } = state;
-      
-      const batsmen = shuffleArray(cricketersMasterList.filter(p => p.role === CricketerRole.Batsman));
-      const bowlers = shuffleArray(cricketersMasterList.filter(p => p.role === CricketerRole.Bowler));
-      const allRounders = shuffleArray(cricketersMasterList.filter(p => p.role === CricketerRole.AllRounder));
-      const wicketKeepers = shuffleArray(cricketersMasterList.filter(p => p.role === CricketerRole.WicketKeeper));
-
-      if (batsmen.length < 17 || bowlers.length < 15 || allRounders.length < 20 || wicketKeepers.length < 8) {
-        return {...state, lastActionMessage: "Error: Not enough players in the database to form sub-pools." };
+      if (cricketersMasterList.length < TOTAL_PLAYERS_TO_AUCTION) {
+        return {...state, lastActionMessage: `Error: Requires at least ${TOTAL_PLAYERS_TO_AUCTION} cricketers in the database, but found only ${cricketersMasterList.length}.`};
       }
+      
+      const rolePools = {
+        [CricketerRole.Batsman]: shuffleArray(cricketersMasterList.filter(p => p.role === CricketerRole.Batsman)),
+        [CricketerRole.Bowler]: shuffleArray(cricketersMasterList.filter(p => p.role === CricketerRole.Bowler)),
+        [CricketerRole.AllRounder]: shuffleArray(cricketersMasterList.filter(p => p.role === CricketerRole.AllRounder)),
+        [CricketerRole.WicketKeeper]: shuffleArray(cricketersMasterList.filter(p => p.role === CricketerRole.WicketKeeper)),
+      };
+
+      const roleRequirements = {
+          [CricketerRole.Batsman]: 17,
+          [CricketerRole.Bowler]: 15,
+          [CricketerRole.AllRounder]: 20,
+          [CricketerRole.WicketKeeper]: 8,
+      };
+
+      const errors: string[] = [];
+      (Object.keys(roleRequirements) as CricketerRole[]).forEach(role => {
+          if(rolePools[role].length < roleRequirements[role]) {
+              errors.push(`Requires ${roleRequirements[role]} ${role}s, found ${rolePools[role].length}.`);
+          }
+      });
+
+      if (errors.length > 0) {
+          return {...state, lastActionMessage: `Error: Not enough players. ${errors.join(' ')}`};
+      }
+
+      const batsmen = rolePools[CricketerRole.Batsman];
+      const bowlers = rolePools[CricketerRole.Bowler];
+      const allRounders = rolePools[CricketerRole.AllRounder];
+      const wicketKeepers = rolePools[CricketerRole.WicketKeeper];
 
       const subPools: Record<string, Cricketer[]> = {
         'Batters-1': batsmen.slice(0, 8), 'Batters-2': batsmen.slice(8, 17),
@@ -206,15 +234,31 @@ const gameReducer = (state: GameState, action: Action): GameState => {
         return { ...state, playersInRound: newPlayersInRound, activePlayerId: nextActivePlayerId, lastActionMessage: `${dropperName} has dropped.` };
     }
     case 'END_ROUND': {
-        const { highestBidderId, currentPlayerForAuction, currentBid, players } = state;
+        const { highestBidderId, currentPlayerForAuction, currentBid, players, playersInRound } = state;
         if (!currentPlayerForAuction) return state;
-        if (!highestBidderId) return { ...state, gameStatus: 'ROUND_OVER', auctionHistory: [...state.auctionHistory, { cricketer: currentPlayerForAuction, winningBid: 0, winnerId: 'UNSOLD' }], lastActionMessage: `${currentPlayerForAuction.name} was unsold.`, currentPlayerForAuction: null };
 
-        const winner = players.find(p => p.id === highestBidderId);
+        let winnerId = highestBidderId;
+        let winningBid = currentBid;
+
+        // Handle uncontested win: if no bids and only one player is left in the round
+        if (!winnerId && playersInRound.length === 1) {
+            winnerId = playersInRound[0];
+            winningBid = currentPlayerForAuction.basePrice;
+        }
+
+        if (!winnerId) { // This now means the player was truly unsold
+            return { ...state, gameStatus: 'ROUND_OVER', auctionHistory: [...state.auctionHistory, { cricketer: currentPlayerForAuction, winningBid: 0, winnerId: 'UNSOLD' }], lastActionMessage: `${currentPlayerForAuction.name} was unsold.`, currentPlayerForAuction: null };
+        }
+        
+        const winner = players.find(p => p.id === winnerId);
         if (!winner) return state;
 
-        const updatedPlayers = players.map(p => p.id === winner.id ? { ...p, budget: p.budget - currentBid, squad: [...p.squad, currentPlayerForAuction] } : p );
-        return { ...state, gameStatus: 'ROUND_OVER', players: updatedPlayers, auctionHistory: [...state.auctionHistory, { cricketer: currentPlayerForAuction, winningBid: currentBid, winnerId: winner.id }], lastActionMessage: `${winner.name} wins ${currentPlayerForAuction.name} for ${currentBid}!`, currentPlayerForAuction: null };
+        if (winner.budget < winningBid) {
+             return { ...state, gameStatus: 'ROUND_OVER', auctionHistory: [...state.auctionHistory, { cricketer: currentPlayerForAuction, winningBid: 0, winnerId: 'UNSOLD' }], lastActionMessage: `${winner.name} couldn't afford their winning bid for ${currentPlayerForAuction.name}! Unsold.`, currentPlayerForAuction: null };
+        }
+
+        const updatedPlayers = players.map(p => p.id === winnerId ? { ...p, budget: p.budget - winningBid, squad: [...p.squad, currentPlayerForAuction] } : p );
+        return { ...state, gameStatus: 'ROUND_OVER', players: updatedPlayers, auctionHistory: [...state.auctionHistory, { cricketer: currentPlayerForAuction, winningBid: winningBid, winnerId: winner.id }], lastActionMessage: `${winner.name} wins ${currentPlayerForAuction.name} for ${winningBid}!`, currentPlayerForAuction: null };
     }
     case 'CONTINUE_TO_NEXT_SUBPOOL':
         return { ...state, gameStatus: 'AUCTION', currentPlayerForAuction: null, currentSubPoolName: state.nextSubPoolName, currentSubPoolPlayers: state.nextSubPoolPlayers, nextSubPoolName: '', nextSubPoolPlayers: [], lastActionMessage: `Starting next sub-pool: ${state.nextSubPoolName}` };
@@ -232,21 +276,25 @@ interface GameProviderProps {
 export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> = ({ children, roomCode, isHost, onLeave, supabase, sessionId, playerName }) => {
   const [state, dispatch] = useReducer(gameReducer, initialStateFactory(roomCode, isHost, sessionId, playerName));
   const stateRef = useRef(state);
+  const actionChannelRef = useRef<RealtimeChannel | null>(null);
   stateRef.current = state;
 
-  const updateGameStateInSupabase = async (newState: GameState) => {
+  const updateGameStateInSupabase = useCallback(async (newState: GameState) => {
     const { error } = await supabase
       .from('rooms')
       .update({ game_state: newState })
       .eq('code', roomCode);
     if (error) console.error("Error updating game state:", error);
-  };
+  }, [supabase, roomCode]);
 
-  const handleHostAction = (action: Action) => {
+  const handleHostAction = useCallback((action: Action) => {
     if (!isHost) return;
     const newState = gameReducer(stateRef.current, action);
+    // Dispatch locally immediately for responsiveness on host screen
+    dispatch(action); 
+    // Then sync with database, which will trigger updates for everyone else
     updateGameStateInSupabase(newState);
-  };
+  }, [isHost, updateGameStateInSupabase]);
 
   useEffect(() => {
     const fetchCricketers = async () => {
@@ -262,6 +310,9 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
           else if (roleStr === 'bowler') role = CricketerRole.Bowler;
           else if (roleStr === 'all-rounder') role = CricketerRole.AllRounder;
           else if (['wicket-keeper', 'wk'].includes(roleStr)) role = CricketerRole.WicketKeeper;
+          else {
+            console.warn(`Unrecognized role "${item.ROLE}" for player ${item.Name}. This player will be excluded.`);
+          }
           
           return {
             id: item.id, name: item.Name, role: role, basePrice: item.base_price || 50, image: item.image,
@@ -279,9 +330,9 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
     let playersChannel: RealtimeChannel;
     let roomChannel: RealtimeChannel;
   
-    const fetchInitialPlayers = async () => {
+    const fetchPlayersAndSync = async () => {
       const { data, error } = await supabase.from('players').select('session_id, name, is_host').eq('room_code', roomCode);
-      if (error) console.error("Error fetching initial players:", error);
+      if (error) console.error("Error fetching players:", error);
       else if (data) {
         const players = data.map((p): Player => ({
           id: p.session_id, name: p.name, isHost: p.is_host, budget: STARTING_BUDGET, squad: [],
@@ -289,39 +340,62 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
         dispatch({ type: 'SET_PLAYERS', payload: players });
       }
     };
-    fetchInitialPlayers();
+    fetchPlayersAndSync();
   
     playersChannel = supabase.channel(`players-${roomCode}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_code=eq.${roomCode}` }, fetchInitialPlayers)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_code=eq.${roomCode}` }, fetchPlayersAndSync)
       .subscribe();
       
     roomChannel = supabase.channel(`room-${roomCode}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `code=eq.${roomCode}`}, (payload) => {
-          if (payload.new.game_state) {
+          if (payload.new.game_state && !isHost) { // Host manages its own state
             dispatch({ type: 'SET_GAME_STATE', payload: payload.new.game_state });
           }
       })
       .subscribe();
+
+    const actionChannel = supabase.channel(`actions-${roomCode}`, { config: { broadcast: { self: false } } });
+    actionChannelRef.current = actionChannel;
+
+    if (isHost) {
+      actionChannel.on('broadcast', { event: 'player-action' }, ({ payload }) => {
+          console.log('Host received action:', payload);
+          handleHostAction(payload as Action);
+      }).subscribe();
+    }
   
     return () => {
       supabase.removeChannel(playersChannel);
       supabase.removeChannel(roomChannel);
+      if(actionChannelRef.current) supabase.removeChannel(actionChannelRef.current);
     };
-  }, [supabase, roomCode]);
+  }, [supabase, roomCode, isHost, handleHostAction]);
+
+  const sendPlayerAction = (action: PlayerAction) => {
+    if (isHost) {
+        handleHostAction(action); // Host processes their own actions directly
+    } else {
+        actionChannelRef.current?.send({ // Clients broadcast actions to the host
+            type: 'broadcast',
+            event: 'player-action',
+            payload: action,
+        });
+    }
+  };
 
   const drawPlayers = () => handleHostAction({ type: 'DRAW_PLAYERS' });
   const startGame = () => handleHostAction({ type: 'START_GAME' });
   const continueToNextSubPool = () => handleHostAction({ type: 'CONTINUE_TO_NEXT_SUBPOOL' });
   
-  // TODO: Player actions need to be broadcasted to the host
-  const placeBid = () => dispatch({ type: 'PLACE_BID', payload: { playerId: sessionId } });
-  const passTurn = () => dispatch({ type: 'PASS_TURN', payload: { playerId: sessionId } });
-  const dropFromRound = () => dispatch({ type: 'DROP_FROM_ROUND', payload: { playerId: sessionId } });
+  const placeBid = () => sendPlayerAction({ type: 'PLACE_BID', payload: { playerId: sessionId } });
+  const passTurn = () => sendPlayerAction({ type: 'PASS_TURN', payload: { playerId: sessionId } });
+  const dropFromRound = () => sendPlayerAction({ type: 'DROP_FROM_ROUND', payload: { playerId: sessionId } });
 
   const leaveGame = onLeave;
 
   useEffect(() => {
-    if (!isHost) return; // Only host runs the game timer logic
+    if (!isHost) return;
+
     if (state.gameStatus === 'AUCTION' && state.currentPlayerForAuction === null) {
       const timer = setTimeout(() => handleHostAction({ type: 'START_NEXT_ROUND' }), 1000);
       return () => clearTimeout(timer);
@@ -331,22 +405,12 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
         return () => clearTimeout(timer);
     }
     if (state.gameStatus === 'AUCTION' && state.currentPlayerForAuction) {
-       if (state.playersInRound.length === 1) {
-            const lastPlayerId = state.playersInRound[0];
-            if (state.highestBidderId === null) {
-                if (lastPlayerId) {
-                    // This is still local, needs to be a broadcast action
-                    // handleHostAction({ type: 'PLACE_BID', payload: { playerId: lastPlayerId } });
-                }
-            } else {
-                 handleHostAction({ type: 'END_ROUND' });
-            }
-       }
-       else if (state.highestBidderId && state.activePlayerId === state.highestBidderId) {
-            handleHostAction({ type: 'END_ROUND' });
+       if (state.playersInRound.length === 1 || (state.highestBidderId && state.activePlayerId === state.highestBidderId)) {
+            const timer = setTimeout(() => handleHostAction({ type: 'END_ROUND' }), 500);
+            return () => clearTimeout(timer);
        }
     }
-  }, [isHost, state.gameStatus, state.playersInRound, state.activePlayerId, state.highestBidderId, state.currentPlayerForAuction]);
+  }, [isHost, state.gameStatus, state.playersInRound, state.activePlayerId, state.highestBidderId, state.currentPlayerForAuction, handleHostAction]);
 
   return (
     <GameContext.Provider value={{ ...state, drawPlayers, startGame, placeBid, passTurn, dropFromRound, leaveGame, continueToNextSubPool }}>
