@@ -7,3 +7,4 @@ export const TOTAL_PLAYERS_TO_AUCTION = 60;
 export const PRE_AUCTION_DURATION_SECONDS = 10;
 export const PRE_ROUND_DURATION_SECONDS = 7;
 export const PLAYER_BREAK_DURATION_SECONDS = 5;
+export const MAX_SQUAD_SIZE = 8;

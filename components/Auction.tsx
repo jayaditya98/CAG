@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/useGame';
 import type { Player, Cricketer } from '../types';
 import { CricketerRole } from '../types';
-import { TURN_DURATION_SECONDS } from '../constants';
+import { TURN_DURATION_SECONDS, MAX_SQUAD_SIZE } from '../constants';
 import type { GameState } from '../context/GameContext';
 import Modal from './Modal';
 
@@ -157,7 +158,7 @@ const MyTeamSummary: React.FC<{ player: Player | undefined; auctionHistory: Game
 
     return (
         <div className="bg-gray-800 p-2 md:p-3 rounded-lg border border-gray-700 flex flex-col h-full overflow-hidden">
-            <p className="font-bold text-md md:text-lg text-center text-green-300 flex-shrink-0 pb-2 border-b border-gray-700">My Team ({player?.squad.length || 0})</p>
+            <p className="font-bold text-md md:text-lg text-center text-green-300 flex-shrink-0 pb-2 border-b border-gray-700">My Team ({player?.squad.length || 0} / {MAX_SQUAD_SIZE})</p>
             <div className="mt-2 flex-grow overflow-y-auto pr-1 no-scrollbar">
                 {player?.squad.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
@@ -200,7 +201,12 @@ const PlayerAvatar: React.FC<{ player: Player, isActive: boolean, isHighestBidde
           </div>
           <span className={`font-bold text-xs md:text-sm truncate w-full ${isCurrentUser ? 'text-green-300' : 'text-white'}`}>{player.name}</span>
           <span className="text-xs font-mono text-green-400/80">{player.budget.toLocaleString()}</span>
-          {!isInRound && <p className="text-xs text-red-400 mt-1">Dropped</p>}
+          <span className="text-[11px] text-gray-400">Squad: {player.squad.length}/{MAX_SQUAD_SIZE}</span>
+          {!isInRound && (
+            player.squad.length >= MAX_SQUAD_SIZE ?
+            <p className="text-xs text-cyan-400 mt-1">Squad Full</p> :
+            <p className="text-xs text-red-400 mt-1">Dropped</p>
+          )}
         </div>
     );
 };
