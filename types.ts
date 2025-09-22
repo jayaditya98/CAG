@@ -28,4 +28,4 @@ export interface Player {
   readyForAuction: boolean;
 }
 
-export type GameStatus = 'HOME' | 'LOBBY' | 'AUCTION_POOL_VIEW' | 'AUCTION' | 'ROUND_OVER' | 'GAME_OVER' | 'SUBPOOL_BREAK';
+export type GameStatus = 'HOME' | 'LOBBY' | 'AUCTION_POOL_VIEW' | 'AUCTION' | 'ROUND_OVER' | 'GAME_OVER' | 'SUBPOOL_BREAK' | 'PRE_AUCTION_TIMER' | 'PRE_ROUND_TIMER';

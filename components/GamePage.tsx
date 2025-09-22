@@ -4,6 +4,7 @@ import { useGame } from '../context/useGame';
 import Lobby from './Lobby';
 import Auction from './Auction';
 import AuctionPoolView from './AuctionPoolView';
+import PreTimerScreen from './PreTimerScreen';
 
 const GamePage: React.FC = () => {
   const { gameStatus } = useGame();
@@ -18,6 +19,7 @@ const GamePage: React.FC = () => {
             Game Over!
         </div>
       )}
+      {(gameStatus === 'PRE_AUCTION_TIMER' || gameStatus === 'PRE_ROUND_TIMER') && <PreTimerScreen />}
     </div>
   );
 };
