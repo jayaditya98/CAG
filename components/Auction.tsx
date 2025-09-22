@@ -462,6 +462,34 @@ const Auction: React.FC = () => {
                         </div>
                     </div>
 
+                    <div>
+                        <h3 className="text-lg font-bold text-yellow-400 border-b border-gray-600 pb-2 mb-3">Player Status</h3>
+                        <div className="space-y-2">
+                            {players.filter(p => !p.isHost).map(p => (
+                                <div key={p.id} className="flex items-center justify-between bg-gray-700/50 p-3 rounded-lg">
+                                    <span className={`font-semibold ${p.id === sessionId ? 'text-green-300' : 'text-gray-200'}`}>
+                                        {p.name} {p.id === sessionId && '(You)'}
+                                    </span>
+                                    {p.isReady ? (
+                                        <div className="flex items-center gap-2 text-green-400">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                            </svg>
+                                            <span>Ready</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-yellow-400 animate-pulse">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                            </svg>
+                                            <span>Not Ready</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="pt-4 border-t border-gray-600">
                       {user?.isHost ? (
                           <button 
