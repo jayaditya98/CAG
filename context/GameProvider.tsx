@@ -155,9 +155,10 @@ export const GameProvider: React.FC<React.PropsWithChildren<GameProviderProps>> 
   const continueToNextSubPool = () => sendAction('CONTINUE_TO_NEXT_SUBPOOL');
   const toggleReady = () => sendAction('TOGGLE_READY');
   const toggleReadyForAuction = () => sendAction('TOGGLE_READY_FOR_AUCTION');
+  const backToLobby = () => sendAction('BACK_TO_LOBBY');
 
   return (
-    <GameContext.Provider value={{ ...state, drawPlayers, startGame, placeBid, passTurn, dropFromRound, leaveGame, continueToNextSubPool, toggleReady, toggleReadyForAuction }}>
+    <GameContext.Provider value={{ ...state, drawPlayers, startGame, placeBid, passTurn, dropFromRound, leaveGame, continueToNextSubPool, toggleReady, toggleReadyForAuction, backToLobby }}>
       {children}
     </GameContext.Provider>
   );

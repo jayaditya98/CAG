@@ -6,6 +6,7 @@ import Lobby from './Lobby';
 import Auction from './Auction';
 import AuctionPoolView from './AuctionPoolView';
 import PreTimerScreen from './PreTimerScreen';
+import GameOver from './GameOver';
 
 const GamePage: React.FC = () => {
   const { gameStatus } = useGame();
@@ -24,11 +25,7 @@ const GamePage: React.FC = () => {
       case 'PLAYER_BREAK_TIMER':
         return <Auction />;
       case 'GAME_OVER':
-        return (
-          <div className="flex items-center justify-center h-full text-4xl font-bold">
-            Game Over!
-          </div>
-        );
+        return <GameOver />;
       default:
         // Fallback for any unknown state
         return null;
