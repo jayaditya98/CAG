@@ -4,7 +4,7 @@ import { useGame } from '../context/useGame';
 import { PRE_AUCTION_DURATION_SECONDS, PRE_ROUND_DURATION_SECONDS } from '../constants';
 
 const PreTimerScreen: React.FC = () => {
-  const { gameStatus } = useGame();
+  const { gameStatus, subPools, subPoolOrder, nextSubPoolPlayers } = useGame();
   
   const isPreAuction = gameStatus === 'PRE_AUCTION_TIMER';
   const duration = isPreAuction ? PRE_AUCTION_DURATION_SECONDS : PRE_ROUND_DURATION_SECONDS;
@@ -33,12 +33,29 @@ const PreTimerScreen: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [gameStatus, duration]);
 
+  let nextPlayerImage: string | null = null;
+  try {
+    if (gameStatus === 'PRE_AUCTION_TIMER') {
+        const firstSubPoolName = subPoolOrder[0];
+        if (firstSubPoolName && subPools[firstSubPoolName]?.[0]) {
+            nextPlayerImage = subPools[firstSubPoolName][0].image;
+        }
+    } else if (gameStatus === 'PRE_ROUND_TIMER') {
+        if (nextSubPoolPlayers?.[0]) {
+            nextPlayerImage = nextSubPoolPlayers[0].image;
+        }
+    }
+  } catch (error) {
+      console.error("Could not determine next player for preloading.", error);
+  }
+
   return (
     <div className={`fixed inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-50 text-white ${isFadingOut ? 'animate-fade-out' : 'animate-fade-in'}`}>
       <p className="text-2xl md:text-4xl font-light mb-4">{message}</p>
       <div className="text-8xl md:text-9xl font-bold">
         {timeLeft}
       </div>
+      {nextPlayerImage && <img src={nextPlayerImage} alt="Preloading next player" style={{ display: 'none' }} />}
        <style>{`
         @keyframes fade-in {
           0% { opacity: 0; }

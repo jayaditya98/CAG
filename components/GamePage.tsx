@@ -18,10 +18,9 @@ const GamePage: React.FC = () => {
       case 'AUCTION':
       case 'ROUND_OVER':
       case 'SUBPOOL_BREAK':
-        return <Auction />;
       case 'PRE_AUCTION_TIMER':
       case 'PRE_ROUND_TIMER':
-        return <PreTimerScreen />;
+        return <Auction />;
       case 'GAME_OVER':
         return (
           <div className="flex items-center justify-center h-full text-4xl font-bold">
@@ -37,6 +36,9 @@ const GamePage: React.FC = () => {
   return (
     <div className="container mx-auto p-2 md:p-4 max-w-7xl h-screen">
       {renderContent()}
+      {(gameStatus === 'PRE_AUCTION_TIMER' || gameStatus === 'PRE_ROUND_TIMER') && (
+        <PreTimerScreen />
+      )}
     </div>
   );
 };
