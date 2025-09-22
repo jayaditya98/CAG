@@ -317,7 +317,7 @@ const Auction: React.FC = () => {
 
     return (
         <div className="h-full flex flex-col p-1 md:p-2 gap-2 text-sm md:text-base overflow-hidden">
-            {(gameStatus === 'AUCTION' || gameStatus === 'ROUND_OVER') && currentSubPoolName && totalInPool > 0 && (
+            {(gameStatus === 'AUCTION' || gameStatus === 'ROUND_OVER' || gameStatus === 'PLAYER_BREAK_TIMER') && currentSubPoolName && totalInPool > 0 && (
                 <div 
                     onClick={() => setIsSubPoolModalVisible(true)}
                     className="flex-shrink-0 bg-gray-800/50 p-3 rounded-lg cursor-pointer hover:bg-gray-700/50 transition border border-gray-700 mb-2 space-y-2"
