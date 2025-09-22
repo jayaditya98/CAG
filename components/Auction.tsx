@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/useGame';
 import type { Player, Cricketer } from '../types';
@@ -206,23 +205,6 @@ const PlayerAvatar: React.FC<{ player: Player, isActive: boolean, isHighestBidde
     );
 };
 
-const PlayerReadyStatus: React.FC<{ player: Player }> = ({ player }) => (
-    <div className="flex items-center justify-between bg-gray-700/50 p-3 rounded-lg">
-        <span className='font-semibold text-gray-200'>{player.name}</span>
-        {player.isReady ? (
-            <div className="flex items-center gap-2 text-green-400">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                <span>Ready</span>
-            </div>
-        ) : (
-            <div className="flex items-center gap-2 text-yellow-400 animate-pulse">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
-                <span>Not Ready</span>
-            </div>
-        )}
-    </div>
-);
-
 const Auction: React.FC = () => {
     const { 
         gameStatus, players, currentPlayerForAuction, currentBid, 
@@ -234,6 +216,7 @@ const Auction: React.FC = () => {
     } = useGame();
     const [isSubPoolModalVisible, setIsSubPoolModalVisible] = useState(false);
     const [timeLeft, setTimeLeft] = useState(TURN_DURATION_SECONDS);
+    const [isSubpoolBreakModalHidden, setIsSubpoolBreakModalHidden] = useState(false);
 
     useEffect(() => {
         if (gameStatus !== 'AUCTION') {
@@ -254,6 +237,12 @@ const Auction: React.FC = () => {
 
         return () => clearInterval(intervalId);
     }, [activePlayerId, gameStatus]);
+    
+    useEffect(() => {
+        if (gameStatus === 'SUBPOOL_BREAK') {
+            setIsSubpoolBreakModalHidden(false); // Always show the modal when a new break starts
+        }
+    }, [gameStatus, currentSubPoolOrderIndex]); // Reset on new subpool break
 
 
     const user = players.find(p => p.id === sessionId);
@@ -286,16 +275,12 @@ const Auction: React.FC = () => {
     };
     const bidIncrement = getBidIncrement(currentBid);
     
-    // --- New Progress Bar Logic ---
     const currentSubPoolName = subPoolOrder[currentSubPoolOrderIndex] || '';
     const currentPool = subPools[currentSubPoolName] || [];
     const totalInPool = currentPool.length;
-    // +1 because index is 0-based
     const currentNumberInPool = currentPlayerInSubPoolIndex + 1;
-    // Protect against division by zero and negative numbers/bad states
     const progressPercent = totalInPool > 0 ? Math.max(0, (currentNumberInPool / totalInPool) * 100) : 0;
     
-    // --- Modal Logic ---
     const soldPlayersInPool = auctionHistory.filter(h => 
         currentPool.some(p => p.id === h.cricketer.id)
     );
@@ -304,8 +289,6 @@ const Auction: React.FC = () => {
         !soldPlayerIds.has(p.id) && p.id !== currentPlayerForAuction?.id
     );
 
-    // FIX: This was using currentSubPoolOrderIndex - 1, which caused the lag.
-    // Now it correctly uses the current index for the pool that just finished.
     const finishedSubPoolSummary = (subPools[subPoolOrder[currentSubPoolOrderIndex]] || []).map(player => {
         const historyEntry = auctionHistory.find(h => h.cricketer.id === player.id);
         if (historyEntry) {
@@ -317,6 +300,13 @@ const Auction: React.FC = () => {
         }
         return null;
     }).filter(Boolean) as (Cricketer & { status: string, soldTo: string, price: number })[];
+    
+    const handleCloseSubpoolModal = () => {
+        if (!user?.isHost && !user?.isReady) {
+            toggleReady(); // Automatically set to ready if not already
+        }
+        setIsSubpoolBreakModalHidden(true);
+    };
 
 
     return (
@@ -424,7 +414,11 @@ const Auction: React.FC = () => {
                 </div>
             </Modal>
             
-            <Modal isVisible={gameStatus === 'SUBPOOL_BREAK'} onClose={() => {}} title={`Sub-Pool Over: ${subPoolOrder[currentSubPoolOrderIndex] || ''}`}>
+            <Modal 
+              isVisible={gameStatus === 'SUBPOOL_BREAK' && !isSubpoolBreakModalHidden} 
+              onClose={user?.isHost ? () => {} : handleCloseSubpoolModal} 
+              title={`Sub-Pool Over: ${subPoolOrder[currentSubPoolOrderIndex] || ''}`}
+            >
                 <div className="space-y-4">
                     <div>
                         <h3 className="text-lg font-bold text-green-400 border-b border-gray-600 pb-2 mb-3">Finished Sub-Pool Summary</h3>
@@ -462,32 +456,29 @@ const Auction: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="space-y-3 pt-3 border-t border-gray-600">
-                        <h3 className="text-md font-bold text-gray-300">Player Status</h3>
-                        {players.map(p => <PlayerReadyStatus key={p.id} player={p} />)}
+                    <div className="pt-4 border-t border-gray-600">
+                      {user?.isHost ? (
+                          <button 
+                              onClick={continueToNextSubPool}
+                              disabled={!allNonHostsReady}
+                              className="w-full bg-green-500 text-gray-900 font-bold py-3 rounded-lg hover:bg-green-400 transition-all duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                          >
+                              {allNonHostsReady ? 'Continue to Next Sub-Pool' : 'Waiting for players...'}
+                          </button>
+                      ) : (
+                          <button 
+                              onClick={toggleReady}
+                              className={`w-full font-bold py-3 rounded-lg transition-all duration-300 ${
+                                  user?.isReady 
+                                  ? 'bg-gray-600 cursor-not-allowed'
+                                  : 'bg-teal-500 hover:bg-teal-400'
+                              }`}
+                              disabled={user?.isReady}
+                          >
+                              {user?.isReady ? 'Waiting for Host...' : 'Ready for Next Round'}
+                          </button>
+                      )}
                     </div>
-                    
-                    {user?.isHost ? (
-                        <button 
-                            onClick={continueToNextSubPool}
-                            disabled={!allNonHostsReady}
-                            className="w-full mt-4 bg-green-500 text-gray-900 font-bold py-3 rounded-lg hover:bg-green-400 transition-all duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                        >
-                            {allNonHostsReady ? 'Continue to Next Sub-Pool' : 'Waiting for players...'}
-                        </button>
-                    ) : (
-                        <button 
-                            onClick={toggleReady}
-                            className={`w-full mt-4 font-bold py-3 rounded-lg transition-all duration-300 ${
-                                user?.isReady 
-                                ? 'bg-gray-600 cursor-not-allowed'
-                                : 'bg-teal-500 hover:bg-teal-400'
-                            }`}
-                            disabled={user?.isReady}
-                        >
-                            {user?.isReady ? 'Waiting for Host...' : 'Ready for Next Round'}
-                        </button>
-                    )}
                 </div>
             </Modal>
 
