@@ -1,14 +1,32 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/useGame';
-import { PRE_AUCTION_DURATION_SECONDS, PRE_ROUND_DURATION_SECONDS } from '../constants';
+import { PRE_AUCTION_DURATION_SECONDS, PRE_ROUND_DURATION_SECONDS, PLAYER_BREAK_DURATION_SECONDS } from '../constants';
 
 const PreTimerScreen: React.FC = () => {
-  const { gameStatus, subPools, subPoolOrder, nextSubPoolPlayers } = useGame();
+  const { gameStatus, subPools, subPoolOrder, nextSubPoolPlayers, currentPlayerForAuction } = useGame();
   
   const isPreAuction = gameStatus === 'PRE_AUCTION_TIMER';
-  const duration = isPreAuction ? PRE_AUCTION_DURATION_SECONDS : PRE_ROUND_DURATION_SECONDS;
-  const message = isPreAuction ? 'The auction is starting...' : 'The next sub-pool is starting...';
+  const isPreRound = gameStatus === 'PRE_ROUND_TIMER';
+  const isPlayerBreak = gameStatus === 'PLAYER_BREAK_TIMER';
+
+  let duration: number;
+  let message: string;
+
+  if (isPreAuction) {
+    duration = PRE_AUCTION_DURATION_SECONDS;
+    message = 'The auction is starting...';
+  } else if (isPreRound) {
+    duration = PRE_ROUND_DURATION_SECONDS;
+    message = 'The next sub-pool is starting...';
+  } else if (isPlayerBreak) {
+    duration = PLAYER_BREAK_DURATION_SECONDS;
+    message = 'Next player in...';
+  } else {
+    duration = 5; // Fallback
+    message = 'Loading...';
+  }
 
   const [timeLeft, setTimeLeft] = useState(duration);
   const [isFadingOut, setIsFadingOut] = useState(false);
@@ -35,14 +53,18 @@ const PreTimerScreen: React.FC = () => {
 
   let nextPlayerImage: string | null = null;
   try {
-    if (gameStatus === 'PRE_AUCTION_TIMER') {
+    if (isPreAuction) {
         const firstSubPoolName = subPoolOrder[0];
         if (firstSubPoolName && subPools[firstSubPoolName]?.[0]) {
             nextPlayerImage = subPools[firstSubPoolName][0].image;
         }
-    } else if (gameStatus === 'PRE_ROUND_TIMER') {
+    } else if (isPreRound) {
         if (nextSubPoolPlayers?.[0]) {
             nextPlayerImage = nextSubPoolPlayers[0].image;
+        }
+    } else if (isPlayerBreak) {
+        if (currentPlayerForAuction) {
+            nextPlayerImage = currentPlayerForAuction.image;
         }
     }
   } catch (error) {

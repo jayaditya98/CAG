@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { useGame } from '../context/useGame';
 import Lobby from './Lobby';
@@ -20,6 +21,7 @@ const GamePage: React.FC = () => {
       case 'SUBPOOL_BREAK':
       case 'PRE_AUCTION_TIMER':
       case 'PRE_ROUND_TIMER':
+      case 'PLAYER_BREAK_TIMER':
         return <Auction />;
       case 'GAME_OVER':
         return (
@@ -36,7 +38,7 @@ const GamePage: React.FC = () => {
   return (
     <div className="container mx-auto p-2 md:p-4 max-w-7xl h-screen">
       {renderContent()}
-      {(gameStatus === 'PRE_AUCTION_TIMER' || gameStatus === 'PRE_ROUND_TIMER') && (
+      {(gameStatus === 'PRE_AUCTION_TIMER' || gameStatus === 'PRE_ROUND_TIMER' || gameStatus === 'PLAYER_BREAK_TIMER') && (
         <PreTimerScreen />
       )}
     </div>
