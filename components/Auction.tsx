@@ -304,7 +304,9 @@ const Auction: React.FC = () => {
         !soldPlayerIds.has(p.id) && p.id !== currentPlayerForAuction?.id
     );
 
-    const finishedSubPoolSummary = (subPools[subPoolOrder[currentSubPoolOrderIndex-1]] || []).map(player => {
+    // FIX: This was using currentSubPoolOrderIndex - 1, which caused the lag.
+    // Now it correctly uses the current index for the pool that just finished.
+    const finishedSubPoolSummary = (subPools[subPoolOrder[currentSubPoolOrderIndex]] || []).map(player => {
         const historyEntry = auctionHistory.find(h => h.cricketer.id === player.id);
         if (historyEntry) {
             if (historyEntry.winnerId === 'UNSOLD') {
